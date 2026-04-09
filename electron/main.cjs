@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -9,10 +9,13 @@ let mainWindow;
 let pendingFiles = [];
 
 // Extract PDF paths from command-line arguments (file association on Windows
-// passes the file path as an argument)
+// passes the file path as an argument).
+// Strip wrapping quotes and resolve to absolute paths before checking existence.
 function extractPdfArgs(argv) {
   return argv
+    .map((arg) => arg.replace(/^["']|["']$/g, '')) // strip quotes
     .filter((arg) => arg.toLowerCase().endsWith('.pdf'))
+    .map((arg) => path.resolve(arg))
     .filter((arg) => fs.existsSync(arg));
 }
 
@@ -71,14 +74,29 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
-  // Once the page is ready, send any files that were queued before window load
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (pendingFiles.length > 0) {
-      mainWindow.webContents.send('open-files', pendingFiles);
-      pendingFiles = [];
-    }
+}
+
+function consumePendingFiles() {
+  const files = pendingFiles;
+  pendingFiles = [];
+  return files;
+}
+
+function readPdfPayloads(filePaths) {
+  return filePaths.map((filePath) => {
+    const buffer = fs.readFileSync(filePath);
+    return {
+      path: filePath,
+      name: path.basename(filePath),
+      data: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+    };
   });
 }
+
+// Renderer pulls pending files after React mounts.
+ipcMain.handle('consume-pending-pdf-files', () => {
+  return readPdfPayloads(consumePendingFiles());
+});
 
 async function openFileDialog() {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -88,23 +106,38 @@ async function openFileDialog() {
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    mainWindow.webContents.send('open-files', result.filePaths);
+    mainWindow.webContents.send('open-files', readPdfPayloads(result.filePaths));
   }
 }
 
 function sendOrQueueFiles(filePaths) {
   if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-    mainWindow.webContents.send('open-files', filePaths);
+    mainWindow.webContents.send('open-files', readPdfPayloads(filePaths));
   } else {
     pendingFiles.push(...filePaths);
   }
 }
 
-// Collect PDFs from initial launch arguments
-const launchFiles = extractPdfArgs(process.argv.slice(1));
+// Collect PDFs from initial launch arguments.
+// No need to guess argv offsets — just scan all args for .pdf files.
+// The exe path, internal Electron args, and --dev flag will never end in .pdf.
+const launchFiles = extractPdfArgs(process.argv);
 if (launchFiles.length > 0) {
   pendingFiles.push(...launchFiles);
 }
+
+// Write a debug log so we can diagnose file association issues.
+// Writes to a temp file next to the exe (or cwd in dev).
+try {
+  const debugPath = path.join(app.getPath('userData'), 'launch-debug.txt');
+  fs.writeFileSync(debugPath, [
+    `time: ${new Date().toISOString()}`,
+    `argv: ${JSON.stringify(process.argv)}`,
+    `isPackaged: ${app.isPackaged}`,
+    `pendingFiles: ${JSON.stringify(pendingFiles)}`,
+    `cwd: ${process.cwd()}`,
+  ].join('\n'));
+} catch { /* ignore */ }
 
 // Windows: second-instance handles "Open with" when app is already running.
 // The file path arrives in argv of the second instance.
@@ -113,7 +146,7 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
-    const files = extractPdfArgs(argv.slice(1));
+    const files = extractPdfArgs(argv);
     if (files.length > 0) {
       sendOrQueueFiles(files);
     }

@@ -1,73 +1,63 @@
-# React + TypeScript + Vite
+# PDFoff Viewer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A lightweight, native PDF viewer built with Electron and React.
 
-Currently, two official plugins are available:
+![PDFoff Viewer](assets/PDFoff_App_Icon.png)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- **Multi-tab support** — Open multiple PDFs simultaneously with a tab bar
+- **Smooth zoom** — Ctrl+scroll wheel with cursor-anchored zooming and acceleration
+- **Fit controls** — Fit full page, fit width, and reset zoom buttons
+- **Text selection & copy** — Select text across pages with right-click copy menu
+- **Drag & drop** — Drop PDF files anywhere to open them
+- **File associations** — Double-click `.pdf` files to open in PDFoff Viewer (Windows)
+- **Animated welcome screen** — App icon splash on startup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Install
 
-## Expanding the ESLint configuration
+Download the latest installer from the [Releases](../../releases) page:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Windows:** `PDFoff Viewer Setup 1.0.0.exe`
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Development
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Prerequisites
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Node.js 20+
+- npm
+
+### Setup
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Run in development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev:electron
 ```
+
+This starts the Vite dev server and launches Electron with hot reload.
+
+### Build installer
+
+```bash
+npm run build:electron
+```
+
+Produces the installer in the `release/` directory.
+
+## Tech Stack
+
+- [Electron](https://www.electronjs.org/) — Native desktop shell
+- [React](https://react.dev/) — UI framework
+- [PDF.js](https://mozilla.github.io/pdf.js/) — PDF rendering engine
+- [Tailwind CSS](https://tailwindcss.com/) — Styling
+- [Vite](https://vite.dev/) — Build tooling
+- [electron-builder](https://www.electron.build/) — Packaging & distribution
+
+## License
+
+MIT

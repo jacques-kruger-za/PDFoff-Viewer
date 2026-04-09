@@ -6,6 +6,9 @@ import {
   Minus,
   Plus,
   FolderOpen,
+  Maximize,
+  MoveHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -15,9 +18,14 @@ interface ToolbarProps {
   onPageChange: (page: number) => void;
   onZoomChange: (zoom: number) => void;
   onOpenFile: () => void;
+  onFitPage: () => void;
+  onFitWidth: () => void;
 }
 
-const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5];
+const ZOOM_STEPS = [
+  0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+  1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3, 4, 5,
+];
 
 function findNextZoom(current: number, direction: 'in' | 'out'): number {
   if (direction === 'in') {
@@ -36,6 +44,8 @@ export function Toolbar({
   onPageChange,
   onZoomChange,
   onOpenFile,
+  onFitPage,
+  onFitWidth,
 }: ToolbarProps) {
   const disabled = totalPages === 0;
 
@@ -121,6 +131,33 @@ export function Toolbar({
         title="Zoom in"
       >
         <Plus size={18} />
+      </button>
+
+      <div className="w-px h-5 bg-border mx-1" />
+
+      <button
+        onClick={onFitPage}
+        disabled={disabled}
+        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        title="Fit full page"
+      >
+        <Maximize size={18} />
+      </button>
+      <button
+        onClick={onFitWidth}
+        disabled={disabled}
+        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        title="Fit width"
+      >
+        <MoveHorizontal size={18} />
+      </button>
+      <button
+        onClick={() => onZoomChange(1)}
+        disabled={disabled}
+        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        title="Reset zoom (100%)"
+      >
+        <RotateCcw size={18} />
       </button>
     </div>
   );

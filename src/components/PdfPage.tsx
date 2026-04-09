@@ -62,6 +62,10 @@ function addLineGutters(textDiv: HTMLDivElement, pageWidth: number) {
   }
 }
 
+// PDF points are 1/72 inch; CSS pixels are 1/96 inch.
+// Scale by 96/72 for physical size, then 1.25× for comfortable reading.
+export const BASE_SCALE = (96 / 72) * 1.25;
+
 interface PdfPageProps {
   pdfDoc: PDFDocumentProxy;
   pageNum: number;
@@ -89,17 +93,20 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       const page = await pdfDoc.getPage(pageNum);
       if (cancelled) return;
 
+      // Effective scale: user zoom × base scale (so zoom=1 → actual page size)
+      const effectiveScale = zoom * BASE_SCALE;
+
       // Single viewport for both canvas and text layer
-      const viewport = page.getViewport({ scale: zoom });
+      const viewport = page.getViewport({ scale: effectiveScale });
       const dpr = window.devicePixelRatio || 1;
 
       // Set the CSS variables that pdf.js v5 TextLayer needs.
       // pdf_viewer.css computes --total-scale-factor from --scale-factor * --user-unit,
       // and TextLayer uses --total-scale-factor for all font-size and dimension calcs.
       // Normally these are set by the full pdf.js viewer — we must set them ourselves.
-      pageContainer.style.setProperty('--scale-factor', `${zoom * dpr}`);
+      pageContainer.style.setProperty('--scale-factor', `${effectiveScale * dpr}`);
       pageContainer.style.setProperty('--user-unit', '1');
-      pageContainer.style.setProperty('--total-scale-factor', `${zoom * dpr}`);
+      pageContainer.style.setProperty('--total-scale-factor', `${effectiveScale * dpr}`);
       pageContainer.classList.add('page');
 
       // Size the container to match the viewport

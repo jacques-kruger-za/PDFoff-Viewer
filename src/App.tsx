@@ -4,6 +4,7 @@ import { TabBar } from './components/TabBar';
 import { PdfViewer } from './components/PdfViewer';
 import { EmptyState } from './components/EmptyState';
 import { usePdfDocument } from './hooks/usePdfDocument';
+import { BASE_SCALE } from './components/PdfPage';
 import type { PdfFile } from './types/pdf';
 
 declare global {
@@ -26,6 +27,7 @@ export default function App() {
   const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
   const { pdfDoc, totalPages, error } = usePdfDocument(activeFile?.data ?? null);
@@ -122,6 +124,31 @@ export default function App() {
     }
   }, []);
 
+  // Fit-page: scale so the full page (width & height) fits in the viewer
+  const handleFitPage = useCallback(async () => {
+    if (!pdfDoc || !viewerRef.current) return;
+    const page = await pdfDoc.getPage(currentPage);
+    const vp = page.getViewport({ scale: 1 });
+    const container = viewerRef.current;
+    // Subtract padding (p-4 = 16px each side)
+    const availW = container.clientWidth - 32;
+    const availH = container.clientHeight - 32;
+    const fitZoom = Math.min(availW / (vp.width * BASE_SCALE), availH / (vp.height * BASE_SCALE));
+    setZoom(Math.round(fitZoom * 1000) / 1000);
+  }, [pdfDoc, currentPage]);
+
+  // Fit-width: scale so the page width fills the viewer width
+  const handleFitWidth = useCallback(async () => {
+    if (!pdfDoc || !viewerRef.current) return;
+    const page = await pdfDoc.getPage(currentPage);
+    const vp = page.getViewport({ scale: 1 });
+    const container = viewerRef.current;
+    // Subtract padding + scrollbar (~16px)
+    const availW = container.clientWidth - 48;
+    const fitZoom = availW / (vp.width * BASE_SCALE);
+    setZoom(Math.round(fitZoom * 1000) / 1000);
+  }, [pdfDoc, currentPage]);
+
   return (
     <div
       className="h-screen flex flex-col bg-neutral-900"
@@ -145,6 +172,8 @@ export default function App() {
         onPageChange={setCurrentPage}
         onZoomChange={setZoom}
         onOpenFile={handleOpenFile}
+        onFitPage={handleFitPage}
+        onFitWidth={handleFitWidth}
       />
 
       <TabBar
@@ -162,6 +191,7 @@ export default function App() {
 
       {pdfDoc ? (
         <PdfViewer
+          ref={viewerRef}
           pdfDoc={pdfDoc}
           totalPages={totalPages}
           zoom={zoom}

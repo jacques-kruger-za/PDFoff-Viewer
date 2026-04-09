@@ -14,8 +14,15 @@ export function usePdfDocument(data: ArrayBuffer | null) {
   const prevDataRef = useRef<ArrayBuffer | null>(null);
 
   useEffect(() => {
-    if (!data || data === prevDataRef.current) return;
+    if (data === prevDataRef.current) return;
     prevDataRef.current = data;
+
+    if (!data) {
+      setPdfDoc(null);
+      setTotalPages(0);
+      setError(null);
+      return;
+    }
 
     let cancelled = false;
     const loadingTask = pdfjsLib.getDocument({ data: data.slice(0) });

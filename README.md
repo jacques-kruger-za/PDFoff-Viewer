@@ -6,13 +6,15 @@ A lightweight, native PDF viewer built with Electron and React.
 
 ## Features
 
+- **Thumbnail sidebar** — Page thumbnail navigation in a scrollable left panel with active page highlighting
 - **Multi-tab support** — Open multiple PDFs simultaneously with a tab bar
 - **Smooth zoom** — Ctrl+scroll wheel with cursor-anchored zooming and acceleration
-- **Fit controls** — Fit full page, fit width, and reset zoom buttons
-- **Text selection & copy** — Select text across pages with right-click copy menu
+- **Fit controls** — Fit full page, fit width, and reset zoom (100%) toolbar buttons
+- **Page navigation** — First/prev/next/last buttons with direct page number input
+- **Text selection & copy** — Select text across pages with right-click context menu
 - **Drag & drop** — Drop PDF files anywhere to open them
 - **File associations** — Double-click `.pdf` files to open in PDFoff Viewer (Windows)
-- **Animated welcome screen** — App icon splash on startup
+- **Animated welcome screen** — App icon splash on startup and when all tabs are closed
 
 ## Install
 

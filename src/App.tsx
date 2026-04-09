@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { TabBar } from './components/TabBar';
 import { PdfViewer } from './components/PdfViewer';
+import { ThumbnailSidebar } from './components/ThumbnailSidebar';
 import { EmptyState } from './components/EmptyState';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import { BASE_SCALE } from './components/PdfPage';
@@ -190,15 +191,23 @@ export default function App() {
       )}
 
       {pdfDoc ? (
-        <PdfViewer
-          ref={viewerRef}
-          pdfDoc={pdfDoc}
-          totalPages={totalPages}
-          zoom={zoom}
-          currentPage={currentPage}
-          onCurrentPageChange={setCurrentPage}
-          onZoomChange={setZoom}
-        />
+        <div className="flex flex-1 overflow-hidden">
+          <ThumbnailSidebar
+            pdfDoc={pdfDoc}
+            totalPages={totalPages}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+          />
+          <PdfViewer
+            ref={viewerRef}
+            pdfDoc={pdfDoc}
+            totalPages={totalPages}
+            zoom={zoom}
+            currentPage={currentPage}
+            onCurrentPageChange={setCurrentPage}
+            onZoomChange={setZoom}
+          />
+        </div>
       ) : (
         <EmptyState onOpenFile={handleOpenFile} />
       )}

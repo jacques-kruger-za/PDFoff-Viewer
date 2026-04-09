@@ -10,6 +10,8 @@ declare global {
   interface Window {
     electronAPI?: {
       onOpenFiles: (callback: (filePaths: string[]) => void) => void;
+      readFile: (filePath: string) => ArrayBuffer;
+      getFileName: (filePath: string) => string;
       isElectron: boolean;
     };
   }
@@ -55,19 +57,16 @@ export default function App() {
     ).then(addFilesFromBuffers);
   }, [addFilesFromBuffers]);
 
-  // Listen for files opened from Electron's native File > Open menu
+  // Listen for files opened from Electron (File > Open menu, file association, CLI args)
   useEffect(() => {
     if (!window.electronAPI) return;
-    window.electronAPI.onOpenFiles(async (filePaths: string[]) => {
-      const loaded = await Promise.all(
-        filePaths.map(async (filePath) => {
-          const response = await fetch(`file://${filePath}`);
-          const data = await response.arrayBuffer();
-          const name = filePath.split(/[\\/]/).pop() || 'untitled.pdf';
-          const id = `pdf-${++fileIdCounter}`;
-          return { id, name, data } as PdfFile;
-        })
-      );
+    window.electronAPI.onOpenFiles((filePaths: string[]) => {
+      const loaded = filePaths.map((filePath) => {
+        const data = window.electronAPI!.readFile(filePath);
+        const name = window.electronAPI!.getFileName(filePath);
+        const id = `pdf-${++fileIdCounter}`;
+        return { id, name, data } as PdfFile;
+      });
       addFilesFromBuffers(loaded);
     });
   }, [addFilesFromBuffers]);

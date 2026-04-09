@@ -115,7 +115,7 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       const ctx = canvas.getContext('2d')!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      renderTask = page.render({ canvasContext: ctx, viewport });
+      renderTask = page.render({ canvasContext: ctx, viewport, canvas });
       try {
         await renderTask.promise;
       } catch {

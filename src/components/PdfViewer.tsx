@@ -21,7 +21,7 @@ export function PdfViewer({
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollingToPage, setScrollingToPage] = useState(false);
-  const scrollTimeoutRef = useRef<number>();
+  const scrollTimeoutRef = useRef<number>(0);
 
   const handlePageVisible = useCallback(
     (pageNum: number) => {

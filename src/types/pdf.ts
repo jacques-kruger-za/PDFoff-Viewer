@@ -1,0 +1,11 @@
+export interface PdfFile {
+  id: string;
+  name: string;
+  data: ArrayBuffer;
+}
+
+export interface ViewerState {
+  currentPage: number;
+  totalPages: number;
+  zoom: number;
+}

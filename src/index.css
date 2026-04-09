@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #1a1a1a;
+  --color-surface-hover: #252525;
+  --color-surface-active: #303030;
+  --color-border: #333333;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-text-primary: #e5e5e5;
+  --color-text-secondary: #a3a3a3;
+  --color-text-muted: #737373;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #404040 transparent;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/*
+ * pdf.js TextLayer overrides
+ *
+ * pdf_viewer.css defines .pdfViewer .page with hardcoded width/height/border/margin
+ * that conflicts with our layout. We override those while keeping the critical
+ * --total-scale-factor variable definitions and text layer styles intact.
+ */
+.pdfViewer.page {
+  /* Override the hardcoded 816x1056 and borders from pdf_viewer.css .pdfViewer .page */
+  border: none !important;
+  margin: 0 !important;
+  background-color: white !important;
+  background-clip: content-box !important;
+  overflow: visible !important;
+}
+
+/* Ensure the textLayer fills its container exactly */
+.pdfViewer .textLayer {
+  position: absolute !important;
+  inset: 0 !important;
+  overflow: clip !important;
+  line-height: 1 !important;
+  /*
+   * mix-blend-mode: multiply makes the textLayer blend with the canvas below.
+   * Combined with an OPAQUE ::selection color, this eliminates double-boxing:
+   * overlapping opaque colors within the layer don't stack — they just overdraw
+   * to the same color. The multiply blend then makes it look semi-transparent
+   * against the white page.
+   */
+  mix-blend-mode: multiply;
+}
+
+/*
+ * Use an OPAQUE selection color. Within the textLayer's composite,
+ * overlapping opaque selections = same color (no darker double-box).
+ * The multiply blend on .textLayer makes this look like a soft highlight
+ * on the white PDF page beneath.
+ */
+.textLayer ::selection {
+  background: rgb(173, 214, 255) !important;
+}
+
+/*
+ * Kill the endOfContent div that pdf.js adds.
+ * It expands to cover the entire page during selection, causing:
+ * - ghost selection rectangles in margins
+ * - double-highlighted (darker) text regions
+ * - jumpy line-end selection sensitivity
+ * Trade-off: can't extend selection by dragging below the last text line on a page.
+ */
+.textLayer .endOfContent {
+  display: none !important;
+}
+
+/* Prevent br elements from contributing visible selection boxes */
+.textLayer br::selection {
+  background: transparent !important;
+}

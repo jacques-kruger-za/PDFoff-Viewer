@@ -126,19 +126,6 @@ if (launchFiles.length > 0) {
   pendingFiles.push(...launchFiles);
 }
 
-// Write a debug log so we can diagnose file association issues.
-// Writes to a temp file next to the exe (or cwd in dev).
-try {
-  const debugPath = path.join(app.getPath('userData'), 'launch-debug.txt');
-  fs.writeFileSync(debugPath, [
-    `time: ${new Date().toISOString()}`,
-    `argv: ${JSON.stringify(process.argv)}`,
-    `isPackaged: ${app.isPackaged}`,
-    `pendingFiles: ${JSON.stringify(pendingFiles)}`,
-    `cwd: ${process.cwd()}`,
-  ].join('\n'));
-} catch { /* ignore */ }
-
 // Windows: second-instance handles "Open with" when app is already running.
 // The file path arrives in argv of the second instance.
 const gotTheLock = app.requestSingleInstanceLock();

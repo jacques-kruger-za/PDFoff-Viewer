@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
@@ -7,22 +7,25 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+interface PdfDocumentState {
+  source: ArrayBuffer | null;
+  pdfDoc: PDFDocumentProxy | null;
+  totalPages: number;
+  error: string | null;
+}
+
+const emptyState: PdfDocumentState = {
+  source: null,
+  pdfDoc: null,
+  totalPages: 0,
+  error: null,
+};
+
 export function usePdfDocument(data: ArrayBuffer | null) {
-  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
-  const [totalPages, setTotalPages] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const prevDataRef = useRef<ArrayBuffer | null>(null);
+  const [state, setState] = useState<PdfDocumentState>(emptyState);
 
   useEffect(() => {
-    if (data === prevDataRef.current) return;
-    prevDataRef.current = data;
-
-    if (!data) {
-      setPdfDoc(null);
-      setTotalPages(0);
-      setError(null);
-      return;
-    }
+    if (!data) return;
 
     let cancelled = false;
     const loadingTask = pdfjsLib.getDocument({ data: data.slice(0) });
@@ -30,16 +33,22 @@ export function usePdfDocument(data: ArrayBuffer | null) {
     loadingTask.promise
       .then((doc) => {
         if (!cancelled) {
-          setPdfDoc(doc);
-          setTotalPages(doc.numPages);
-          setError(null);
+          setState({
+            source: data,
+            pdfDoc: doc,
+            totalPages: doc.numPages,
+            error: null,
+          });
         }
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         if (!cancelled) {
-          setError(err.message);
-          setPdfDoc(null);
-          setTotalPages(0);
+          setState({
+            source: data,
+            pdfDoc: null,
+            totalPages: 0,
+            error: err.message,
+          });
         }
       });
 
@@ -49,5 +58,17 @@ export function usePdfDocument(data: ArrayBuffer | null) {
     };
   }, [data]);
 
-  return { pdfDoc, totalPages, error };
+  if (!data) {
+    return { pdfDoc: null, totalPages: 0, error: null };
+  }
+
+  if (state.source !== data) {
+    return { pdfDoc: null, totalPages: 0, error: null };
+  }
+
+  return {
+    pdfDoc: state.pdfDoc,
+    totalPages: state.totalPages,
+    error: state.error,
+  };
 }

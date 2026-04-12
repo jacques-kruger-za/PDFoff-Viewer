@@ -91,7 +91,7 @@ export function Toolbar({
           }}
           className="w-12 text-center bg-neutral-800 border border-border rounded px-1 py-0.5 text-text-primary text-sm focus:outline-none focus:border-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
-        <span className="text-text-muted">/ {totalPages || '–'}</span>
+        <span className="w-14 text-left tabular-nums text-text-muted">/ {totalPages || '-'}</span>
       </div>
 
       <button

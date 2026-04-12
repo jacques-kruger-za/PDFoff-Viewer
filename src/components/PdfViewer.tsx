@@ -20,6 +20,13 @@ interface PdfViewerProps {
 }
 
 const AUTO_SCROLL_RESET_MS = 500;
+const WHEEL_RENDER_SETTLE_MS = 250;
+const WHEEL_ZOOM_STREAK_WINDOW_MS = 140;
+const WHEEL_ZOOM_BASE_STEP = 1.06;
+const WHEEL_ZOOM_ACCELERATION = 0.02;
+const WHEEL_ZOOM_MAX_STREAK = 8;
+const ZOOM_ANIMATION_EASING = 0.26;
+const ZOOM_ANIMATION_STOP_EPSILON = 0.0015;
 
 export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function PdfViewer({
   pdfDoc,
@@ -31,16 +38,20 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const autoScrollTimeoutRef = useRef<number | null>(null);
+  const zoomAnimationFrameRef = useRef<number | null>(null);
   const isAutoScrollingRef = useRef(false);
   const zoomAnchorRef = useRef<{
     mouseX: number;
     mouseY: number;
-    scrollX: number;
-    scrollY: number;
-    oldZoom: number;
+    contentX: number;
+    contentY: number;
+    anchorZoom: number;
   } | null>(null);
   const lastWheelTimeRef = useRef(0);
   const wheelStreakRef = useRef(0);
+  const targetZoomRef = useRef(zoom);
+  const displayedZoomRef = useRef(zoom);
+  const [displayedZoom, setDisplayedZoom] = useState(zoom);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   useImperativeHandle(ref, () => containerRef.current!, []);
@@ -49,6 +60,13 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
     if (autoScrollTimeoutRef.current !== null) {
       window.clearTimeout(autoScrollTimeoutRef.current);
       autoScrollTimeoutRef.current = null;
+    }
+  }, []);
+
+  const cancelZoomAnimation = useCallback(() => {
+    if (zoomAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(zoomAnimationFrameRef.current);
+      zoomAnimationFrameRef.current = null;
     }
   }, []);
 
@@ -61,6 +79,40 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
   }, [clearAutoScrollTimeout]);
 
   useEffect(() => clearAutoScrollTimeout, [clearAutoScrollTimeout]);
+  useEffect(() => cancelZoomAnimation, [cancelZoomAnimation]);
+
+  const animateZoom = useCallback(() => {
+    if (zoomAnimationFrameRef.current !== null) return;
+
+    const tick = () => {
+      const current = displayedZoomRef.current;
+      const target = targetZoomRef.current;
+      const delta = target - current;
+
+      if (Math.abs(delta) <= ZOOM_ANIMATION_STOP_EPSILON) {
+        displayedZoomRef.current = target;
+        setDisplayedZoom(target);
+        zoomAnimationFrameRef.current = null;
+
+        if (performance.now() - lastWheelTimeRef.current >= WHEEL_RENDER_SETTLE_MS) {
+          zoomAnchorRef.current = null;
+        }
+        return;
+      }
+
+      const nextZoom = current + delta * ZOOM_ANIMATION_EASING;
+      displayedZoomRef.current = nextZoom;
+      setDisplayedZoom(nextZoom);
+      zoomAnimationFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    zoomAnimationFrameRef.current = window.requestAnimationFrame(tick);
+  }, []);
+
+  useEffect(() => {
+    targetZoomRef.current = zoom;
+    animateZoom();
+  }, [animateZoom, zoom]);
 
   const handlePageVisible = useCallback(
     (pageNum: number) => {
@@ -101,30 +153,35 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
+      const currentZoom = targetZoomRef.current;
 
       zoomAnchorRef.current = {
         mouseX,
         mouseY,
-        scrollX: container.scrollLeft + mouseX,
-        scrollY: container.scrollTop + mouseY,
-        oldZoom: zoom,
+        contentX: container.scrollLeft + mouseX,
+        contentY: container.scrollTop + mouseY,
+        anchorZoom: displayedZoomRef.current,
       };
 
       const now = performance.now();
-      if (now - lastWheelTimeRef.current < 120) {
-        wheelStreakRef.current = Math.min(wheelStreakRef.current + 1, 8);
+      if (now - lastWheelTimeRef.current < WHEEL_ZOOM_STREAK_WINDOW_MS) {
+        wheelStreakRef.current = Math.min(wheelStreakRef.current + 1, WHEEL_ZOOM_MAX_STREAK);
       } else {
         wheelStreakRef.current = 0;
       }
       lastWheelTimeRef.current = now;
 
-      const step = 1.03 + wheelStreakRef.current * 0.015;
+      const step = WHEEL_ZOOM_BASE_STEP + wheelStreakRef.current * WHEEL_ZOOM_ACCELERATION;
       const direction = e.deltaY < 0 ? 1 : -1;
       const factor = direction > 0 ? step : 1 / step;
-      const nextZoom = Math.max(0.1, Math.min(10, zoom * factor));
-      onZoomChange(Math.round(nextZoom * 1000) / 1000);
+      const nextZoom = Math.max(0.1, Math.min(10, currentZoom * factor));
+      const roundedZoom = Math.round(nextZoom * 1000) / 1000;
+
+      targetZoomRef.current = roundedZoom;
+      onZoomChange(roundedZoom);
+      animateZoom();
     },
-    [onZoomChange, zoom]
+    [animateZoom, onZoomChange]
   );
 
   useLayoutEffect(() => {
@@ -132,11 +189,10 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
     const container = containerRef.current;
     if (!anchor || !container) return;
 
-    const ratio = zoom / anchor.oldZoom;
-    container.scrollLeft = anchor.scrollX * ratio - anchor.mouseX;
-    container.scrollTop = anchor.scrollY * ratio - anchor.mouseY;
-    zoomAnchorRef.current = null;
-  }, [zoom]);
+    const ratio = displayedZoom / anchor.anchorZoom;
+    container.scrollLeft = anchor.contentX * ratio - anchor.mouseX;
+    container.scrollTop = anchor.contentY * ratio - anchor.mouseY;
+  }, [displayedZoom]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const selection = window.getSelection();
@@ -181,7 +237,7 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
             key={`${pdfDoc.fingerprints[0]}-${pageNum}`}
             pdfDoc={pdfDoc}
             pageNum={pageNum}
-            zoom={zoom}
+            zoom={displayedZoom}
             onVisible={handlePageVisible}
           />
         ))}

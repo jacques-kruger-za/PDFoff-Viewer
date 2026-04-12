@@ -8,6 +8,12 @@ let mainWindow;
 // Files queued before the window is ready (e.g. from file association launch)
 let pendingFiles = [];
 
+function sendMenuCommand(command) {
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('menu-command', command);
+  }
+}
+
 // Extract PDF paths from command-line arguments (file association on Windows
 // passes the file path as an argument).
 // Strip wrapping quotes and resolve to absolute paths before checking existence.
@@ -23,9 +29,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false,
     title: 'PDFoff Viewer',
     icon: path.join(__dirname, '..', 'build', 'icon.ico'),
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#171717',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -42,6 +49,32 @@ function createWindow() {
           accelerator: 'CmdOrCtrl+O',
           click: () => openFileDialog(),
         },
+        {
+          label: 'Close Tab',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => sendMenuCommand('close-tab'),
+        },
+        {
+          label: 'Print',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.print({});
+            }
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Settings (coming soon)',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Settings',
+              message: 'Settings are coming soon.',
+              detail: 'A dedicated settings screen has not been built yet.',
+            });
+          },
+        },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -56,12 +89,63 @@ function createWindow() {
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Show Page Sidebar',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => sendMenuCommand(menuItem.checked ? 'show-sidebar' : 'hide-sidebar'),
+        },
+        { type: 'separator' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { role: 'resetZoom' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
         ...(isDev ? [{ type: 'separator' }, { role: 'toggleDevTools' }] : []),
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'PDFoff Documentation',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'PDFoff Documentation',
+              message: 'Documentation is coming soon.',
+              detail: 'This menu item is a placeholder for a future documentation hub.',
+            });
+          },
+        },
+        {
+          label: "What's New",
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: "What's New",
+              message: 'PDFoff Viewer v1.1 is in progress.',
+              detail:
+                'Current improvements include startup polish, smoother Ctrl+wheel zoom, and expanded application menus.',
+            });
+          },
+        },
+        {
+          label: 'Keyboard Shortcuts',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Keyboard Shortcuts',
+              message: 'Current keyboard shortcuts',
+              detail: [
+                'Ctrl+O  Open PDF',
+                'Ctrl+W  Close tab',
+                'Ctrl+P  Print',
+                'Ctrl+Mouse Wheel  Zoom in or out',
+              ].join('\n'),
+            });
+          },
+        },
       ],
     },
   ];
@@ -73,6 +157,10 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
 
 }
 

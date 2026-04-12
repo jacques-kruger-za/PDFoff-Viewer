@@ -4,6 +4,7 @@ import { TabBar } from './components/TabBar';
 import { PdfViewer } from './components/PdfViewer';
 import { ThumbnailSidebar } from './components/ThumbnailSidebar';
 import { EmptyState } from './components/EmptyState';
+import { DocumentLoadingState } from './components/DocumentLoadingState';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import { BASE_SCALE } from './components/PdfPage';
 import type { PdfFile } from './types/pdf';
@@ -11,7 +12,10 @@ import type { PdfFile } from './types/pdf';
 declare global {
   interface Window {
     electronAPI?: {
-      onOpenFiles: (callback: (files: Array<{ path: string; name: string; data: ArrayBuffer }>) => void) => void;
+      onOpenFiles: (
+        callback: (files: Array<{ path: string; name: string; data: ArrayBuffer }>) => void
+      ) => () => void;
+      onMenuCommand: (callback: (command: string) => void) => () => void;
       consumePendingPdfFiles: () => Promise<Array<{ path: string; name: string; data: ArrayBuffer }>>;
       isElectron: boolean;
     };
@@ -26,6 +30,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
 
@@ -74,10 +79,12 @@ export default function App() {
   // Listen for files opened from Electron (File > Open menu, second-instance)
   useEffect(() => {
     if (!window.electronAPI) return;
-    window.electronAPI.onOpenFiles(loadElectronFiles);
+    const unsubscribe = window.electronAPI.onOpenFiles(loadElectronFiles);
 
     // Pull any files that were queued before React mounted (e.g. file association launch)
     window.electronAPI.consumePendingPdfFiles().then(loadElectronFiles);
+
+    return unsubscribe;
   }, [loadElectronFiles]);
 
   const handleOpenFile = useCallback(() => {
@@ -109,6 +116,32 @@ export default function App() {
     },
     [activeFileId]
   );
+
+  const handleCloseActiveFile = useCallback(() => {
+    if (activeFileId) {
+      handleCloseFile(activeFileId);
+    }
+  }, [activeFileId, handleCloseFile]);
+
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    return window.electronAPI.onMenuCommand((command) => {
+      switch (command) {
+        case 'close-tab':
+          handleCloseActiveFile();
+          break;
+        case 'show-sidebar':
+          setIsSidebarVisible(true);
+          break;
+        case 'hide-sidebar':
+          setIsSidebarVisible(false);
+          break;
+        default:
+          break;
+      }
+    });
+  }, [handleCloseActiveFile]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -158,7 +191,7 @@ export default function App() {
 
   return (
     <div
-      className="h-screen flex flex-col bg-neutral-900"
+      className="relative h-screen flex flex-col bg-neutral-900"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -198,12 +231,14 @@ export default function App() {
 
       {pdfDoc ? (
         <div className="flex flex-1 overflow-hidden">
-          <ThumbnailSidebar
-            pdfDoc={pdfDoc}
-            totalPages={totalPages}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-          />
+          {isSidebarVisible && (
+            <ThumbnailSidebar
+              pdfDoc={pdfDoc}
+              totalPages={totalPages}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+            />
+          )}
           <PdfViewer
             ref={viewerRef}
             pdfDoc={pdfDoc}
@@ -214,6 +249,8 @@ export default function App() {
             onZoomChange={setZoom}
           />
         </div>
+      ) : activeFile ? (
+        <DocumentLoadingState fileName={activeFile.name} />
       ) : (
         <EmptyState onOpenFile={handleOpenFile} />
       )}

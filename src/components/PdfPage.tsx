@@ -1,19 +1,12 @@
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TextLayer } from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 
-/**
- * After TextLayer renders, group spans by visual line (same `top` value)
- * and add an invisible gutter span from the rightmost span to the page edge.
- * This gives the browser a selectable target at end-of-line, preventing
- * selection from jumping to a different line when dragging past text.
- */
 function addLineGutters(textDiv: HTMLDivElement, pageWidth: number) {
   const spans = textDiv.querySelectorAll<HTMLElement>(':scope > span');
   if (spans.length === 0) return;
 
-  // Group spans by approximate top position (within 2px = same line)
   const lines = new Map<number, { maxRight: number; top: string; height: number }>();
 
   for (const span of spans) {
@@ -21,7 +14,6 @@ function addLineGutters(textDiv: HTMLDivElement, pageWidth: number) {
     const right = span.offsetLeft + span.offsetWidth;
     const height = span.offsetHeight;
 
-    // Find existing line within 2px tolerance
     let lineKey = -1;
     for (const [key] of lines) {
       if (Math.abs(key - top) < 2) {
@@ -43,10 +35,9 @@ function addLineGutters(textDiv: HTMLDivElement, pageWidth: number) {
     }
   }
 
-  // Add a gutter span for each line that doesn't reach the page edge
   for (const [, line] of lines) {
     const gap = pageWidth - line.maxRight;
-    if (gap < 5) continue; // already near the edge
+    if (gap < 5) continue;
 
     const gutter = document.createElement('span');
     gutter.style.position = 'absolute';
@@ -62,8 +53,6 @@ function addLineGutters(textDiv: HTMLDivElement, pageWidth: number) {
   }
 }
 
-// PDF points are 1/72 inch; CSS pixels are 1/96 inch.
-// Scale by 96/72 for physical size, then 1.25× for comfortable reading.
 export const BASE_SCALE = (96 / 72) * 1.25;
 
 interface PdfPageProps {
@@ -78,8 +67,30 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
+  const renderCommitTimeoutRef = useRef<number | null>(null);
+  const [renderZoom, setRenderZoom] = useState(zoom);
+  const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0 });
 
-  // Single unified effect: render canvas + text layer with shared viewport
+  useEffect(() => {
+    if (Math.abs(zoom - renderZoom) < 0.001) return;
+
+    if (renderCommitTimeoutRef.current !== null) {
+      window.clearTimeout(renderCommitTimeoutRef.current);
+    }
+
+    renderCommitTimeoutRef.current = window.setTimeout(() => {
+      setRenderZoom(zoom);
+      renderCommitTimeoutRef.current = null;
+    }, 250);
+
+    return () => {
+      if (renderCommitTimeoutRef.current !== null) {
+        window.clearTimeout(renderCommitTimeoutRef.current);
+        renderCommitTimeoutRef.current = null;
+      }
+    };
+  }, [renderZoom, zoom]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const textDiv = textLayerRef.current;
@@ -93,27 +104,19 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       const page = await pdfDoc.getPage(pageNum);
       if (cancelled) return;
 
-      // Effective scale: user zoom × base scale (so zoom=1 → actual page size)
-      const effectiveScale = zoom * BASE_SCALE;
-
-      // Single viewport for both canvas and text layer
+      const effectiveScale = renderZoom * BASE_SCALE;
       const viewport = page.getViewport({ scale: effectiveScale });
       const dpr = window.devicePixelRatio || 1;
 
-      // Set the CSS variables that pdf.js v5 TextLayer needs.
-      // pdf_viewer.css computes --total-scale-factor from --scale-factor * --user-unit,
-      // and TextLayer uses --total-scale-factor for all font-size and dimension calcs.
-      // Normally these are set by the full pdf.js viewer — we must set them ourselves.
       pageContainer.style.setProperty('--scale-factor', `${effectiveScale * dpr}`);
       pageContainer.style.setProperty('--user-unit', '1');
       pageContainer.style.setProperty('--total-scale-factor', `${effectiveScale * dpr}`);
       pageContainer.classList.add('page');
 
-      // Size the container to match the viewport
       pageContainer.style.width = `${viewport.width}px`;
       pageContainer.style.height = `${viewport.height}px`;
+      setRenderedSize({ width: viewport.width, height: viewport.height });
 
-      // --- Canvas rendering ---
       canvas.width = viewport.width * dpr;
       canvas.height = viewport.height * dpr;
       canvas.style.width = `${viewport.width}px`;
@@ -126,16 +129,13 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       try {
         await renderTask.promise;
       } catch {
-        // Render cancelled — no action needed
         return;
       }
       if (cancelled) return;
 
-      // --- Text layer rendering ---
       const textContent = await page.getTextContent();
       if (cancelled) return;
 
-      // Clear previous text layer content
       textDiv.replaceChildren();
 
       const textLayer = new TextLayer({
@@ -146,10 +146,6 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
 
       await textLayer.render();
 
-      // Post-process: add invisible gutter spans at the end of each visual line.
-      // Without these, dragging past the last text on a line causes the browser
-      // to jump selection to a different line (since absolutely-positioned spans
-      // don't give the browser a concept of "visual lines").
       if (!cancelled) {
         addLineGutters(textDiv, viewport.width);
       }
@@ -159,9 +155,8 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdfDoc, pageNum, zoom]);
+  }, [pdfDoc, pageNum, renderZoom]);
 
-  // Intersection observer for page tracking
   useEffect(() => {
     if (!onVisible || !wrapperRef.current) return;
 
@@ -178,9 +173,36 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
     return () => observer.disconnect();
   }, [pageNum, onVisible]);
 
+  useEffect(() => {
+    return () => {
+      if (renderCommitTimeoutRef.current !== null) {
+        window.clearTimeout(renderCommitTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const visualScale = renderZoom === 0 ? 1 : zoom / renderZoom;
+  const wrapperWidth = renderedSize.width * visualScale;
+  const wrapperHeight = renderedSize.height * visualScale;
+
   return (
-    <div ref={wrapperRef} className="mb-2 shadow-lg" data-page={pageNum}>
-      <div ref={pageContainerRef} className="pdfViewer relative">
+    <div
+      ref={wrapperRef}
+      className="mb-2 overflow-hidden shadow-lg"
+      data-page={pageNum}
+      style={{
+        width: wrapperWidth > 0 ? `${wrapperWidth}px` : undefined,
+        height: wrapperHeight > 0 ? `${wrapperHeight}px` : undefined,
+      }}
+    >
+      <div
+        ref={pageContainerRef}
+        className="pdfViewer relative"
+        style={{
+          transform: `scale(${visualScale})`,
+          transformOrigin: 'top left',
+        }}
+      >
         <canvas ref={canvasRef} className="absolute top-0 left-0" />
         <div ref={textLayerRef} className="textLayer" />
       </div>

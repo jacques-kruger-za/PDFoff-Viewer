@@ -186,7 +186,7 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
       const step = WHEEL_ZOOM_BASE_STEP + wheelStreakRef.current * WHEEL_ZOOM_ACCELERATION;
       const direction = e.deltaY < 0 ? 1 : -1;
       const factor = direction > 0 ? step : 1 / step;
-      const nextZoom = Math.max(0.1, Math.min(10, currentZoom * factor));
+      const nextZoom = Math.max(0.1, Math.min(5, currentZoom * factor));
       const roundedZoom = Math.round(nextZoom * 1000) / 1000;
 
       targetZoomRef.current = roundedZoom;

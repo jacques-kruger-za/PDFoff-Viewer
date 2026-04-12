@@ -123,6 +123,18 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
     [onCurrentPageChange]
   );
 
+  // Reset scroll to top when switching documents and suppress intersection
+  // callbacks while pages are mounting (they'd overwrite currentPage with
+  // whatever random page intersects the viewport during layout).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.scrollTop = 0;
+    }
+    isAutoScrollingRef.current = true;
+    scheduleAutoScrollReset();
+  }, [pdfDoc, scheduleAutoScrollReset]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;

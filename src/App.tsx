@@ -13,10 +13,13 @@ declare global {
   interface Window {
     electronAPI?: {
       onOpenFiles: (
-        callback: (files: Array<{ path: string; name: string; data: ArrayBuffer }>) => void
+        callback: (files: Array<{ path?: string; name: string; data: ArrayBuffer }>) => void
       ) => () => void;
       onMenuCommand: (callback: (command: string) => void) => () => void;
-      consumePendingPdfFiles: () => Promise<Array<{ path: string; name: string; data: ArrayBuffer }>>;
+      consumePendingPdfFiles: () => Promise<Array<{ path?: string; name: string; data: ArrayBuffer }>>;
+      showInFolder: (filePath: string) => Promise<void>;
+      openFileDialog: () => void;
+      openDroppedFiles: (files: File[]) => void;
       isElectron: boolean;
     };
   }
@@ -43,8 +46,27 @@ export default function App() {
 
   const addFilesFromBuffers = useCallback(
     (loaded: PdfFile[]) => {
-      setFiles((prev) => [...prev, ...loaded]);
-      setActiveFileId(loaded[loaded.length - 1].id);
+      let lastActiveId: string | null = null;
+
+      setFiles((prev) => {
+        const newFiles: PdfFile[] = [];
+        for (const file of loaded) {
+          const existing = prev.find(
+            (f) => (file.path && f.path === file.path) || f.name === file.name
+          );
+          if (existing) {
+            lastActiveId = existing.id;
+          } else {
+            newFiles.push(file);
+            lastActiveId = file.id;
+          }
+        }
+        return newFiles.length > 0 ? [...prev, ...newFiles] : prev;
+      });
+
+      if (lastActiveId) {
+        setActiveFileId(lastActiveId);
+      }
     },
     []
   );
@@ -59,17 +81,19 @@ export default function App() {
       pdfFiles.map(async (file) => {
         const data = await file.arrayBuffer();
         const id = `pdf-${++fileIdCounter}`;
-        return { id, name: file.name, data } as PdfFile;
+        // In Electron, File objects from <input> and drag-drop have a .path property
+        const filePath = (file as File & { path?: string }).path || undefined;
+        return { id, name: file.name, data, path: filePath } as PdfFile;
       })
     ).then(addFilesFromBuffers);
   }, [addFilesFromBuffers]);
 
   const loadElectronFiles = useCallback(
-    (openedFiles: Array<{ name: string; data: ArrayBuffer }>) => {
+    (openedFiles: Array<{ path?: string; name: string; data: ArrayBuffer }>) => {
       if (openedFiles.length === 0) return;
-      const loaded = openedFiles.map(({ name, data }) => {
+      const loaded = openedFiles.map(({ path, name, data }) => {
         const id = `pdf-${++fileIdCounter}`;
-        return { id, name, data } as PdfFile;
+        return { id, name, data, path } as PdfFile;
       });
       addFilesFromBuffers(loaded);
     },
@@ -88,7 +112,11 @@ export default function App() {
   }, [loadElectronFiles]);
 
   const handleOpenFile = useCallback(() => {
-    fileInputRef.current?.click();
+    if (window.electronAPI) {
+      window.electronAPI.openFileDialog();
+    } else {
+      fileInputRef.current?.click();
+    }
   }, []);
 
   const handleFileChange = useCallback(
@@ -148,7 +176,11 @@ export default function App() {
       e.preventDefault();
       setIsDragging(false);
       const droppedFiles = Array.from(e.dataTransfer.files);
-      addFiles(droppedFiles);
+      if (window.electronAPI?.openDroppedFiles) {
+        window.electronAPI.openDroppedFiles(droppedFiles);
+      } else {
+        addFiles(droppedFiles);
+      }
     },
     [addFiles]
   );

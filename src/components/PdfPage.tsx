@@ -54,6 +54,54 @@ function addLineGutters(textDiv: HTMLDivElement, pageWidth: number) {
   }
 }
 
+function getCharOffset(root: HTMLDivElement, node: Node, offset: number): number {
+  let count = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let current = walker.nextNode();
+  while (current) {
+    if (current === node) return count + offset;
+    count += current.textContent?.length ?? 0;
+    current = walker.nextNode();
+  }
+  return -1;
+}
+
+function restoreSelection(root: HTMLDivElement, startOffset: number, endOffset: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let count = 0;
+  let startNode: Node | null = null;
+  let startLocal = 0;
+  let endNode: Node | null = null;
+  let endLocal = 0;
+
+  let current = walker.nextNode();
+  while (current) {
+    const len = current.textContent?.length ?? 0;
+    if (!startNode && count + len > startOffset) {
+      startNode = current;
+      startLocal = startOffset - count;
+    }
+    if (!endNode && count + len >= endOffset) {
+      endNode = current;
+      endLocal = endOffset - count;
+      break;
+    }
+    count += len;
+    current = walker.nextNode();
+  }
+
+  if (startNode && endNode) {
+    const sel = window.getSelection();
+    if (sel) {
+      const range = document.createRange();
+      range.setStart(startNode, startLocal);
+      range.setEnd(endNode, endLocal);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+}
+
 export const BASE_SCALE = (96 / 72) * 1.25;
 
 interface PdfPageProps {
@@ -155,9 +203,26 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       pageContainer.style.width = `${viewport.width}px`;
       pageContainer.style.height = `${viewport.height}px`;
 
+      // Save any active text selection so we can restore it after the swap
+      const sel = window.getSelection();
+      let savedStart = -1;
+      let savedEnd = -1;
+      if (sel && sel.rangeCount > 0 && sel.toString().trim()) {
+        const range = sel.getRangeAt(0);
+        if (textDiv.contains(range.startContainer)) {
+          savedStart = getCharOffset(textDiv, range.startContainer, range.startOffset);
+          savedEnd = getCharOffset(textDiv, range.endContainer, range.endOffset);
+        }
+      }
+
       // Swap text layer content then add gutters (layout queries need live DOM)
       textDiv.replaceChildren(...tempTextContainer.childNodes);
       addLineGutters(textDiv, viewport.width);
+
+      // Restore selection in the new text layer nodes
+      if (savedStart >= 0 && savedEnd >= 0) {
+        restoreSelection(textDiv, savedStart, savedEnd);
+      }
 
       // Force synchronous React re-render so wrapper size + CSS transform
       // update in the same paint frame as the canvas/text swap above

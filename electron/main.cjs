@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -184,6 +184,19 @@ function readPdfPayloads(filePaths) {
 // Renderer pulls pending files after React mounts.
 ipcMain.handle('consume-pending-pdf-files', () => {
   return readPdfPayloads(consumePendingFiles());
+});
+
+ipcMain.handle('show-in-folder', (_event, filePath) => {
+  shell.showItemInFolder(filePath);
+});
+
+ipcMain.on('open-file-dialog', () => openFileDialog());
+
+ipcMain.on('open-dropped-files', (_event, paths) => {
+  const valid = paths.filter((p) => p.toLowerCase().endsWith('.pdf') && fs.existsSync(p));
+  if (valid.length > 0) {
+    mainWindow.webContents.send('open-files', readPdfPayloads(valid));
+  }
 });
 
 async function openFileDialog() {

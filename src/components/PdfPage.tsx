@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { TextLayer } from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
@@ -69,7 +70,7 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
   const textLayerRef = useRef<HTMLDivElement>(null);
   const renderCommitTimeoutRef = useRef<number | null>(null);
   const [renderZoom, setRenderZoom] = useState(zoom);
-  const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0 });
+  const [canvasState, setCanvasState] = useState({ zoom, width: 0, height: 0 });
 
   useEffect(() => {
     if (Math.abs(zoom - renderZoom) < 0.001) return;
@@ -108,24 +109,14 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       const viewport = page.getViewport({ scale: effectiveScale });
       const dpr = window.devicePixelRatio || 1;
 
-      pageContainer.style.setProperty('--scale-factor', `${effectiveScale * dpr}`);
-      pageContainer.style.setProperty('--user-unit', '1');
-      pageContainer.style.setProperty('--total-scale-factor', `${effectiveScale * dpr}`);
-      pageContainer.classList.add('page');
+      // Render to an offscreen canvas so the visible canvas stays untouched
+      const offscreen = document.createElement('canvas');
+      offscreen.width = viewport.width * dpr;
+      offscreen.height = viewport.height * dpr;
+      const offCtx = offscreen.getContext('2d')!;
+      offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      pageContainer.style.width = `${viewport.width}px`;
-      pageContainer.style.height = `${viewport.height}px`;
-      setRenderedSize({ width: viewport.width, height: viewport.height });
-
-      canvas.width = viewport.width * dpr;
-      canvas.height = viewport.height * dpr;
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
-
-      const ctx = canvas.getContext('2d')!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      renderTask = page.render({ canvasContext: ctx, viewport, canvas });
+      renderTask = page.render({ canvasContext: offCtx, viewport, canvas: offscreen });
       try {
         await renderTask.promise;
       } catch {
@@ -133,22 +124,46 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
       }
       if (cancelled) return;
 
+      // Prepare text layer off-DOM so old text stays selectable until swap
       const textContent = await page.getTextContent();
       if (cancelled) return;
 
-      textDiv.replaceChildren();
-
+      const tempTextContainer = document.createElement('div');
       const textLayer = new TextLayer({
-        container: textDiv,
+        container: tempTextContainer,
         textContentSource: textContent,
         viewport,
       });
-
       await textLayer.render();
+      if (cancelled) return;
 
-      if (!cancelled) {
-        addLineGutters(textDiv, viewport.width);
-      }
+      // --- Atomic swap: all DOM mutations + React state in one synchronous block ---
+
+      // Copy offscreen pixels to visible canvas
+      canvas.width = offscreen.width;
+      canvas.height = offscreen.height;
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(offscreen, 0, 0);
+
+      // Update page container sizing and CSS variables
+      pageContainer.style.setProperty('--scale-factor', `${effectiveScale * dpr}`);
+      pageContainer.style.setProperty('--user-unit', '1');
+      pageContainer.style.setProperty('--total-scale-factor', `${effectiveScale * dpr}`);
+      pageContainer.classList.add('page');
+      pageContainer.style.width = `${viewport.width}px`;
+      pageContainer.style.height = `${viewport.height}px`;
+
+      // Swap text layer content then add gutters (layout queries need live DOM)
+      textDiv.replaceChildren(...tempTextContainer.childNodes);
+      addLineGutters(textDiv, viewport.width);
+
+      // Force synchronous React re-render so wrapper size + CSS transform
+      // update in the same paint frame as the canvas/text swap above
+      flushSync(() => {
+        setCanvasState({ zoom: renderZoom, width: viewport.width, height: viewport.height });
+      });
     })();
 
     return () => {
@@ -181,9 +196,9 @@ export function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
     };
   }, []);
 
-  const visualScale = renderZoom === 0 ? 1 : zoom / renderZoom;
-  const wrapperWidth = renderedSize.width * visualScale;
-  const wrapperHeight = renderedSize.height * visualScale;
+  const visualScale = canvasState.zoom === 0 ? 1 : zoom / canvasState.zoom;
+  const wrapperWidth = canvasState.width * visualScale;
+  const wrapperHeight = canvasState.height * visualScale;
 
   return (
     <div

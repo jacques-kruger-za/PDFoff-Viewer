@@ -8,3 +8,15 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+const bootSplash = document.getElementById('boot-splash')
+
+if (bootSplash) {
+  window.setTimeout(() => {
+    bootSplash.classList.add('is-exiting')
+  }, 1200)
+
+  window.setTimeout(() => {
+    bootSplash.remove()
+  }, 1800)
+}

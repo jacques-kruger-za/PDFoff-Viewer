@@ -4,6 +4,7 @@ import { TabBar } from './components/TabBar';
 import { PdfViewer } from './components/PdfViewer';
 import { ThumbnailSidebar } from './components/ThumbnailSidebar';
 import { EmptyState } from './components/EmptyState';
+import { DocumentLoadingState } from './components/DocumentLoadingState';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import { BASE_SCALE } from './components/PdfPage';
 import type { PdfFile } from './types/pdf';
@@ -11,8 +12,14 @@ import type { PdfFile } from './types/pdf';
 declare global {
   interface Window {
     electronAPI?: {
-      onOpenFiles: (callback: (files: Array<{ path: string; name: string; data: ArrayBuffer }>) => void) => void;
-      consumePendingPdfFiles: () => Promise<Array<{ path: string; name: string; data: ArrayBuffer }>>;
+      onOpenFiles: (
+        callback: (files: Array<{ path?: string; name: string; data: ArrayBuffer }>) => void
+      ) => () => void;
+      onMenuCommand: (callback: (command: string) => void) => () => void;
+      consumePendingPdfFiles: () => Promise<Array<{ path?: string; name: string; data: ArrayBuffer }>>;
+      showInFolder: (filePath: string) => Promise<void>;
+      openFileDialog: () => void;
+      openDroppedFiles: (files: File[]) => void;
       isElectron: boolean;
     };
   }
@@ -26,6 +33,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
 
@@ -38,8 +46,27 @@ export default function App() {
 
   const addFilesFromBuffers = useCallback(
     (loaded: PdfFile[]) => {
-      setFiles((prev) => [...prev, ...loaded]);
-      setActiveFileId(loaded[loaded.length - 1].id);
+      let lastActiveId: string | null = null;
+
+      setFiles((prev) => {
+        const newFiles: PdfFile[] = [];
+        for (const file of loaded) {
+          const existing = prev.find(
+            (f) => (file.path && f.path === file.path) || f.name === file.name
+          );
+          if (existing) {
+            lastActiveId = existing.id;
+          } else {
+            newFiles.push(file);
+            lastActiveId = file.id;
+          }
+        }
+        return newFiles.length > 0 ? [...prev, ...newFiles] : prev;
+      });
+
+      if (lastActiveId) {
+        setActiveFileId(lastActiveId);
+      }
     },
     []
   );
@@ -54,17 +81,19 @@ export default function App() {
       pdfFiles.map(async (file) => {
         const data = await file.arrayBuffer();
         const id = `pdf-${++fileIdCounter}`;
-        return { id, name: file.name, data } as PdfFile;
+        // In Electron, File objects from <input> and drag-drop have a .path property
+        const filePath = (file as File & { path?: string }).path || undefined;
+        return { id, name: file.name, data, path: filePath } as PdfFile;
       })
     ).then(addFilesFromBuffers);
   }, [addFilesFromBuffers]);
 
   const loadElectronFiles = useCallback(
-    (openedFiles: Array<{ name: string; data: ArrayBuffer }>) => {
+    (openedFiles: Array<{ path?: string; name: string; data: ArrayBuffer }>) => {
       if (openedFiles.length === 0) return;
-      const loaded = openedFiles.map(({ name, data }) => {
+      const loaded = openedFiles.map(({ path, name, data }) => {
         const id = `pdf-${++fileIdCounter}`;
-        return { id, name, data } as PdfFile;
+        return { id, name, data, path } as PdfFile;
       });
       addFilesFromBuffers(loaded);
     },
@@ -74,14 +103,20 @@ export default function App() {
   // Listen for files opened from Electron (File > Open menu, second-instance)
   useEffect(() => {
     if (!window.electronAPI) return;
-    window.electronAPI.onOpenFiles(loadElectronFiles);
+    const unsubscribe = window.electronAPI.onOpenFiles(loadElectronFiles);
 
     // Pull any files that were queued before React mounted (e.g. file association launch)
     window.electronAPI.consumePendingPdfFiles().then(loadElectronFiles);
+
+    return unsubscribe;
   }, [loadElectronFiles]);
 
   const handleOpenFile = useCallback(() => {
-    fileInputRef.current?.click();
+    if (window.electronAPI) {
+      window.electronAPI.openFileDialog();
+    } else {
+      fileInputRef.current?.click();
+    }
   }, []);
 
   const handleFileChange = useCallback(
@@ -110,12 +145,42 @@ export default function App() {
     [activeFileId]
   );
 
+  const handleCloseActiveFile = useCallback(() => {
+    if (activeFileId) {
+      handleCloseFile(activeFileId);
+    }
+  }, [activeFileId, handleCloseFile]);
+
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    return window.electronAPI.onMenuCommand((command) => {
+      switch (command) {
+        case 'close-tab':
+          handleCloseActiveFile();
+          break;
+        case 'show-sidebar':
+          setIsSidebarVisible(true);
+          break;
+        case 'hide-sidebar':
+          setIsSidebarVisible(false);
+          break;
+        default:
+          break;
+      }
+    });
+  }, [handleCloseActiveFile]);
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
       const droppedFiles = Array.from(e.dataTransfer.files);
-      addFiles(droppedFiles);
+      if (window.electronAPI?.openDroppedFiles) {
+        window.electronAPI.openDroppedFiles(droppedFiles);
+      } else {
+        addFiles(droppedFiles);
+      }
     },
     [addFiles]
   );
@@ -158,7 +223,7 @@ export default function App() {
 
   return (
     <div
-      className="h-screen flex flex-col bg-neutral-900"
+      className="relative h-screen flex flex-col bg-neutral-900"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -198,12 +263,14 @@ export default function App() {
 
       {pdfDoc ? (
         <div className="flex flex-1 overflow-hidden">
-          <ThumbnailSidebar
-            pdfDoc={pdfDoc}
-            totalPages={totalPages}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-          />
+          {isSidebarVisible && (
+            <ThumbnailSidebar
+              pdfDoc={pdfDoc}
+              totalPages={totalPages}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+            />
+          )}
           <PdfViewer
             ref={viewerRef}
             pdfDoc={pdfDoc}
@@ -214,6 +281,8 @@ export default function App() {
             onZoomChange={setZoom}
           />
         </div>
+      ) : activeFile ? (
+        <DocumentLoadingState fileName={activeFile.name} />
       ) : (
         <EmptyState onOpenFile={handleOpenFile} />
       )}

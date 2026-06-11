@@ -12,6 +12,8 @@ const IPC = {
   GET_SIGNATURES: 'get-signatures',
   SAVE_SIGNATURE: 'save-signature',
   DELETE_SIGNATURE: 'delete-signature',
+  SET_UNSAVED: 'set-unsaved',
+  CLOSE_AFTER_SAVE: 'close-after-save',
 };
 
 const MENU_COMMANDS = {
@@ -20,6 +22,7 @@ const MENU_COMMANDS = {
   HIDE_SIDEBAR: 'hide-sidebar',
   SAVE: 'save',
   SAVE_AS: 'save-as',
+  SAVE_ALL: 'save-all',
 };
 
 module.exports = { IPC, MENU_COMMANDS };

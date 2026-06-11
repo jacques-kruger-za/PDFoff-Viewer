@@ -24,5 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSignatures: () => ipcRenderer.invoke(IPC.GET_SIGNATURES),
   saveSignature: (entry) => ipcRenderer.invoke(IPC.SAVE_SIGNATURE, entry),
   deleteSignature: (id) => ipcRenderer.invoke(IPC.DELETE_SIGNATURE, id),
+  setUnsaved: (value) => ipcRenderer.send(IPC.SET_UNSAVED, value),
+  closeAfterSave: () => ipcRenderer.send(IPC.CLOSE_AFTER_SAVE),
   isElectron: true,
 });

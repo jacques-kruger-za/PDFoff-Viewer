@@ -256,18 +256,16 @@ function Swatches({
   onChange: (c: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 px-1">
+    <div className="flex items-center gap-1 ml-1 rounded-md border border-border bg-neutral-900/60 p-1">
       {colors.map((c) => (
         <button
           key={c}
           onClick={() => onChange(c)}
           title={c}
-          className="w-4 h-4 rounded-full border"
+          className="w-4 h-4 rounded-full"
           style={{
             background: c,
-            borderColor: value === c ? '#fff' : 'rgba(255,255,255,0.25)',
-            outline: value === c ? '2px solid var(--color-accent, #3b82f6)' : 'none',
-            outlineOffset: 1,
+            boxShadow: value === c ? '0 0 0 2px #171717, 0 0 0 4px #3b82f6' : '0 0 0 1px rgba(255,255,255,0.35)',
           }}
         />
       ))}
@@ -275,28 +273,38 @@ function Swatches({
   );
 }
 
-function WidthPicker({
+export function WidthPicker({
   widths,
   value,
   onChange,
+  labels = ['Thin', 'Medium', 'Thick'],
 }: {
   widths: readonly number[];
   value: number;
   onChange: (w: number) => void;
+  labels?: string[];
 }) {
-  const dots = [4, 7, 10];
+  const lineHeights = [2, 4, 7];
   return (
-    <div className="flex items-center gap-1 px-1">
-      {widths.map((w, i) => (
-        <button
-          key={w}
-          onClick={() => onChange(w)}
-          title={['Thin', 'Medium', 'Thick'][i]}
-          className={`btn-toolbar w-7 ${Math.abs(value - w) < 1e-6 ? 'bg-accent/40' : ''}`}
-        >
-          <span className="rounded-full bg-current" style={{ width: dots[i], height: dots[i] }} />
-        </button>
-      ))}
+    <div className="flex items-center gap-0.5 ml-1 rounded-md border border-border bg-neutral-900/60 p-0.5">
+      {widths.map((w, i) => {
+        const active = Math.abs(value - w) < 1e-6;
+        return (
+          <button
+            key={w}
+            onClick={() => onChange(w)}
+            title={labels[i]}
+            className={`flex items-center justify-center w-7 h-6 rounded transition-colors ${
+              active ? 'bg-accent/50' : 'hover:bg-neutral-700'
+            }`}
+          >
+            <span
+              className="rounded-full"
+              style={{ width: 16, height: lineHeights[i], background: active ? '#fff' : '#9ca3af' }}
+            />
+          </button>
+        );
+      })}
     </div>
   );
 }

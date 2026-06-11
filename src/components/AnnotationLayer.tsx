@@ -25,6 +25,7 @@ interface AnnotationLayerProps {
   penColor: string;
   penWidth: number;
   highlightColor: string;
+  signatureHeight: number;
   selectedId: string | null;
   pendingImage: PendingImage | null;
   onSelect: (id: string | null) => void;
@@ -70,6 +71,7 @@ export function AnnotationLayer({
   penColor,
   penWidth,
   highlightColor,
+  signatureHeight,
   selectedId,
   pendingImage,
   onSelect,
@@ -115,8 +117,16 @@ export function AnnotationLayer({
         capture(e);
         setDraftRect({ x: p.x, y: p.y, w: 0, h: 0 });
       } else if ((tool === 'image' || tool === 'signature') && pendingImage) {
-        const defW = 0.28;
-        const defH = (defW * (r.width / r.height)) / pendingImage.aspect;
+        let defW: number;
+        let defH: number;
+        if (pendingImage.kind === 'signature') {
+          // Height-anchored (remembered from last resize); width from aspect.
+          defH = signatureHeight;
+          defW = (defH * pendingImage.aspect * r.height) / r.width;
+        } else {
+          defW = ANNOTATION_DEFAULTS.IMAGE_WIDTH;
+          defH = (defW * (r.width / r.height)) / pendingImage.aspect;
+        }
         const a: Annotation = {
           id: newId(),
           page,
@@ -133,7 +143,7 @@ export function AnnotationLayer({
         onConsumePendingImage();
       }
     },
-    [tool, page, pendingImage, onAdd, onSelect, onConsumePendingImage]
+    [tool, page, pendingImage, signatureHeight, onAdd, onSelect, onConsumePendingImage]
   );
 
   // Text is created on click (after the full pointer sequence) so the trailing
@@ -149,7 +159,7 @@ export function AnnotationLayer({
           type: 'text',
           x: p.x,
           y: p.y,
-          w: Math.min(0.4, 1 - p.x),
+          w: Math.min(ANNOTATION_DEFAULTS.TEXT_WIDTH, 1 - p.x),
           text: '',
           fontSize: ANNOTATION_DEFAULTS.TEXT_FONT_SIZE,
           color: ANNOTATION_DEFAULTS.TEXT_COLOR,
@@ -248,14 +258,18 @@ export function AnnotationLayer({
         if (g.orig.type === 'pen') {
           onUpdate(g.id, { points: g.orig.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })) } as Partial<Annotation>);
         } else {
-          onUpdate(g.id, { x: g.orig.x + dx, y: g.orig.y + dy } as Partial<Annotation>);
+          const w = g.orig.w;
+          const h = g.orig.type === 'text' ? 0.02 : g.orig.h;
+          const nx = Math.min(Math.max(0, g.orig.x + dx), 1 - w);
+          const ny = Math.min(Math.max(0, g.orig.y + dy), 1 - h);
+          onUpdate(g.id, { x: nx, y: ny } as Partial<Annotation>);
         }
       } else if (g.kind === 'resize' && (a.type === 'image' || a.type === 'highlight' || a.type === 'text')) {
-        const nw = Math.max(0.02, p.x - a.x);
+        const nw = Math.min(Math.max(0.02, p.x - a.x), 1 - a.x); // never past right edge
         if (a.type === 'text') {
           onUpdate(g.id, { w: nw } as Partial<Annotation>);
         } else {
-          let nh = Math.max(0.02, p.y - a.y);
+          let nh = Math.min(Math.max(0.02, p.y - a.y), 1 - a.y);
           if (g.aspect && a.type === 'image' && size.w && size.h) {
             nh = (nw * size.w) / g.aspect / size.h;
           }
@@ -442,9 +456,18 @@ export function AnnotationLayer({
               width: `${a.w * 100}%`,
               outline: selected ? '1px solid #3b82f6' : a.text ? 'none' : '1px dashed #9ca3af',
               cursor: tool === 'select' && !editing ? 'move' : 'text',
-              pointerEvents: tool === 'select' || editing ? 'auto' : 'none',
+              pointerEvents: tool === 'select' || tool === 'text' || editing ? 'auto' : 'none',
             }}
-            onPointerDown={(e) => !editing && startMove(e, a)}
+            onPointerDown={(e) => tool === 'select' && !editing && startMove(e, a)}
+            onClick={(e) => {
+              // In text mode, clicking an existing box edits it instead of
+              // stacking a new box on top.
+              if (tool === 'text') {
+                e.stopPropagation();
+                onSelect(a.id);
+                setEditingId(a.id);
+              }
+            }}
             onDoubleClick={() => {
               onSelect(a.id);
               setEditingId(a.id);
@@ -455,6 +478,12 @@ export function AnnotationLayer({
                 autoFocus
                 value={a.text}
                 onChange={(e) => onUpdate(a.id, { text: e.target.value } as Partial<Annotation>)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    e.currentTarget.blur();
+                  }
+                }}
                 onBlur={() => {
                   setEditingId(null);
                   if (!a.text.trim()) onDelete(a.id);
@@ -490,7 +519,7 @@ export function AnnotationLayer({
                 {a.text || ' '}
               </div>
             )}
-            {selected && !editing && <ResizeHandle onPointerDown={(e) => startResize(e, a)} axis="x" />}
+            {selected && <ResizeHandle onPointerDown={(e) => startResize(e, a)} axis="x" />}
           </div>
         );
       })}

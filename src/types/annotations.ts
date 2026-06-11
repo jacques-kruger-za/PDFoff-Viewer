@@ -74,6 +74,12 @@ export const ANNOTATION_DEFAULTS = {
   PEN_STROKE: 0.003, // fraction of page height
   HIGHLIGHT_COLOR: '#ffe34d',
   HIGHLIGHT_ALPHA: 0.4,
+  /** Default text box width as a fraction of page width. */
+  TEXT_WIDTH: 0.27,
+  /** Default signature height as a fraction of page height (remembered after first resize). */
+  SIGNATURE_HEIGHT: 0.035,
+  /** Default inserted-image width as a fraction of page width. */
+  IMAGE_WIDTH: 0.28,
 } as const;
 
 /** Tool setting palettes / sizes. */

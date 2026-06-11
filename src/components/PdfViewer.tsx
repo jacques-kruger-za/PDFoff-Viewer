@@ -33,6 +33,7 @@ interface PdfViewerProps {
   penColor: string;
   penWidth: number;
   highlightColor: string;
+  signatureHeight: number;
   selectedId: string | null;
   pendingImage: PendingImage | null;
   onSelectAnnotation: (id: string | null) => void;
@@ -54,6 +55,7 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
   penColor,
   penWidth,
   highlightColor,
+  signatureHeight,
   selectedId,
   pendingImage,
   onSelectAnnotation,
@@ -285,6 +287,7 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
                 penColor={penColor}
                 penWidth={penWidth}
                 highlightColor={highlightColor}
+                signatureHeight={signatureHeight}
                 selectedId={selectedId}
                 pendingImage={pendingImage}
                 onSelect={onSelectAnnotation}

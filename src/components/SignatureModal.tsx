@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Trash2, Star, X, Pen, Upload } from 'lucide-react';
 import type { SignatureEntry } from '../types/annotations';
 import { SIGNATURE_NIBS } from '../types/annotations';
+import { WidthPicker } from './Toolbar';
 import { getSignatures, saveSignature, deleteSignature } from '../services/signatureStore';
 
 interface SignatureModalProps {
@@ -211,16 +212,7 @@ export function SignatureModal({ onClose, onUse }: SignatureModalProps) {
               {mode === 'draw' && (
                 <div className="ml-auto flex items-center gap-1 text-xs text-text-muted">
                   <span>Nib</span>
-                  {SIGNATURE_NIBS.map((n, i) => (
-                    <button
-                      key={n}
-                      onClick={() => setNib(n)}
-                      title={['Fine', 'Medium', 'Broad'][i]}
-                      className={`btn-toolbar w-7 ${nib === n ? 'bg-accent/40' : ''}`}
-                    >
-                      <span className="rounded-full bg-current" style={{ width: [4, 7, 10][i], height: [4, 7, 10][i] }} />
-                    </button>
-                  ))}
+                  <WidthPicker widths={SIGNATURE_NIBS} value={nib} onChange={setNib} labels={['Fine', 'Medium', 'Broad']} />
                 </div>
               )}
             </div>

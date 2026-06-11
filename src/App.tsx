@@ -43,6 +43,8 @@ declare global {
         makeDefault?: boolean;
       }) => Promise<SignatureEntry>;
       deleteSignature: (id: string) => Promise<{ ok: boolean }>;
+      setUnsaved: (value: boolean) => void;
+      closeAfterSave: () => void;
       isElectron: boolean;
     };
   }
@@ -105,6 +107,7 @@ export default function App() {
   const [penColor, setPenColor] = useState<string>(ANNOTATION_DEFAULTS.PEN_COLOR);
   const [penWidth, setPenWidth] = useState<number>(ANNOTATION_DEFAULTS.PEN_STROKE);
   const [highlightColor, setHighlightColor] = useState<string>(ANNOTATION_DEFAULTS.HIGHLIGHT_COLOR);
+  const [signatureHeight, setSignatureHeight] = useState<number>(ANNOTATION_DEFAULTS.SIGNATURE_HEIGHT);
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
   const { pdfDoc, totalPages, error } = usePdfDocument(activeFile);
@@ -202,6 +205,9 @@ export default function App() {
 
   const handleCloseFile = useCallback(
     (id: string) => {
+      if (dirtyFiles[id] && !window.confirm('This document has unsaved changes. Close without saving?')) {
+        return;
+      }
       setFiles((prev) => {
         const next = prev.filter((f) => f.id !== id);
         if (activeFileId === id) {
@@ -211,8 +217,18 @@ export default function App() {
         }
         return next;
       });
+      setAnnotationsByFile((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setDirtyFiles((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     },
-    [activeFileId]
+    [activeFileId, dirtyFiles]
   );
 
   const handleCloseActiveFile = useCallback(() => {
@@ -310,10 +326,15 @@ export default function App() {
   const handleUpdateAnnotation = useCallback(
     (id: string, patch: Partial<Annotation>) => {
       if (!activeFileId) return;
-      setAnnotationsByFile((prev) => ({
-        ...prev,
-        [activeFileId]: (prev[activeFileId] ?? []).map((a) => (a.id === id ? ({ ...a, ...patch } as Annotation) : a)),
-      }));
+      setAnnotationsByFile((prev) => {
+        const next = (prev[activeFileId] ?? []).map((a) => (a.id === id ? ({ ...a, ...patch } as Annotation) : a));
+        // Remember a resized signature's height so the next placement matches.
+        const changed = next.find((a) => a.id === id);
+        if (changed && changed.type === 'image' && changed.kind === 'signature' && 'h' in patch) {
+          setSignatureHeight(changed.h);
+        }
+        return { ...prev, [activeFileId]: next };
+      });
       markDirty(activeFileId);
     },
     [activeFileId, markDirty]
@@ -341,6 +362,20 @@ export default function App() {
     setTool((prev) => (prev === t ? 'select' : t));
     setSelectedId(null);
     if (t !== 'image' && t !== 'signature') setPendingImage(null);
+  }, []);
+
+  // Escape returns to the normal (select) tool. Text editing handles its own
+  // Escape (blur) and stops propagation, so this won't fire mid-edit.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setTool('select');
+        setSelectedId(null);
+        setPendingImage(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const handlePickImage = useCallback(() => {
@@ -397,14 +432,37 @@ export default function App() {
     [activeFile, annotationsByFile, clearDirty]
   );
 
+  const saveAllDirty = useCallback(async () => {
+    const api = window.electronAPI;
+    for (const f of files) {
+      if (!dirtyFiles[f.id]) continue;
+      try {
+        const bytes = await exportPdf(f.data.slice(0), annotationsByFile[f.id] ?? []);
+        if (api?.saveFile && f.path) await api.saveFile(f.path, bytes);
+        else if (api?.saveFileAs) await api.saveFileAs(bytes, f.name);
+        clearDirty(f.id);
+      } catch (err) {
+        console.error('Save failed for', f.name, err);
+      }
+    }
+  }, [files, dirtyFiles, annotationsByFile, clearDirty]);
+
+  // Report unsaved state to the main process for the close-confirmation prompt.
+  useEffect(() => {
+    window.electronAPI?.setUnsaved?.(Object.values(dirtyFiles).some(Boolean));
+  }, [dirtyFiles]);
+
   // Save menu commands (Electron) — wired here so handleSave is defined.
   useEffect(() => {
     if (!window.electronAPI) return;
     return window.electronAPI.onMenuCommand((command) => {
       if (command === MENU_COMMANDS.SAVE) handleSave(false);
       else if (command === MENU_COMMANDS.SAVE_AS) handleSave(true);
+      else if (command === MENU_COMMANDS.SAVE_ALL) {
+        saveAllDirty().then(() => window.electronAPI?.closeAfterSave?.());
+      }
     });
-  }, [handleSave]);
+  }, [handleSave, saveAllDirty]);
 
   // Browser (non-Electron) Ctrl+S fallback — Electron uses the menu accelerator.
   useEffect(() => {
@@ -501,6 +559,7 @@ export default function App() {
             penColor={penColor}
             penWidth={penWidth}
             highlightColor={highlightColor}
+            signatureHeight={signatureHeight}
             selectedId={selectedId}
             pendingImage={pendingImage}
             onSelectAnnotation={setSelectedId}

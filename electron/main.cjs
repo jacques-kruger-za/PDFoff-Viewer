@@ -8,6 +8,9 @@ const isDev = process.argv.includes('--dev');
 let mainWindow;
 // Files queued before the window is ready (e.g. from file association launch)
 let pendingFiles = [];
+// Unsaved-changes tracking for the close-confirmation prompt.
+let hasUnsaved = false;
+let forceClose = false;
 
 function sendMenuCommand(command) {
   if (mainWindow && mainWindow.webContents) {
@@ -177,6 +180,27 @@ function createWindow() {
     mainWindow.show();
   });
 
+  // Prompt to save unsaved changes before the window closes.
+  mainWindow.on('close', (e) => {
+    if (forceClose || !hasUnsaved) return;
+    e.preventDefault();
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning',
+      buttons: ['Save', "Don't Save", 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      title: 'Unsaved changes',
+      message: 'You have unsaved changes.',
+      detail: 'Do you want to save them before closing?',
+    });
+    if (choice === 0) {
+      sendMenuCommand(MENU_COMMANDS.SAVE_ALL); // renderer saves, then calls back to close
+    } else if (choice === 1) {
+      forceClose = true;
+      mainWindow.destroy();
+    }
+    // choice === 2 (Cancel): keep the window open.
+  });
 }
 
 function consumePendingFiles() {
@@ -309,6 +333,15 @@ ipcMain.handle(IPC.DELETE_SIGNATURE, async (_event, id) => {
   if (wasDefault && entries.length > 0) entries[0].isDefault = true;
   await writeSignatureIndex(entries);
   return { ok: true };
+});
+
+ipcMain.on(IPC.SET_UNSAVED, (_event, value) => {
+  hasUnsaved = Boolean(value);
+});
+
+ipcMain.on(IPC.CLOSE_AFTER_SAVE, () => {
+  forceClose = true;
+  if (mainWindow) mainWindow.close();
 });
 
 ipcMain.on(IPC.OPEN_FILE_DIALOG, () => openFileDialog());

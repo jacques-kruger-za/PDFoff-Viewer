@@ -30,7 +30,9 @@ interface PdfViewerProps {
   // Annotation surface
   annotations: Annotation[];
   tool: ToolType;
-  annColor: string;
+  penColor: string;
+  penWidth: number;
+  highlightColor: string;
   selectedId: string | null;
   pendingImage: PendingImage | null;
   onSelectAnnotation: (id: string | null) => void;
@@ -49,7 +51,9 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
   onZoomChange,
   annotations,
   tool,
-  annColor,
+  penColor,
+  penWidth,
+  highlightColor,
   selectedId,
   pendingImage,
   onSelectAnnotation,
@@ -278,7 +282,9 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
                 page={pageNum}
                 annotations={annotations.filter((a) => a.page === pageNum)}
                 tool={tool}
-                color={annColor}
+                penColor={penColor}
+                penWidth={penWidth}
+                highlightColor={highlightColor}
                 selectedId={selectedId}
                 pendingImage={pendingImage}
                 onSelect={onSelectAnnotation}

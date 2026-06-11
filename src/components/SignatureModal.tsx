@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trash2, Star, X, Pen, Upload } from 'lucide-react';
 import type { SignatureEntry } from '../types/annotations';
+import { SIGNATURE_NIBS } from '../types/annotations';
 import { getSignatures, saveSignature, deleteSignature } from '../services/signatureStore';
 
 interface SignatureModalProps {
@@ -8,22 +9,74 @@ interface SignatureModalProps {
   onUse: (dataUrl: string) => void;
 }
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** Crop a canvas to the bounding box of its non-transparent pixels (+padding). */
+function cropToInk(canvas: HTMLCanvasElement): string {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return canvas.toDataURL('image/png');
+  const { width: W, height: H } = canvas;
+  const data = ctx.getImageData(0, 0, W, H).data;
+  let minX = W, minY = H, maxX = 0, maxY = 0, found = false;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (data[(y * W + x) * 4 + 3] > 12) {
+        found = true;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (!found) return canvas.toDataURL('image/png');
+  const pad = 8;
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(W - 1, maxX + pad);
+  maxY = Math.min(H - 1, maxY + pad);
+  const cw = maxX - minX + 1;
+  const ch = maxY - minY + 1;
+  const out = document.createElement('canvas');
+  out.width = cw;
+  out.height = ch;
+  out.getContext('2d')!.drawImage(canvas, minX, minY, cw, ch, 0, 0, cw, ch);
+  return out.toDataURL('image/png');
+}
+
+function cropDataUrl(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      resolve(cropToInk(c));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 export function SignatureModal({ onClose, onUse }: SignatureModalProps) {
   const [entries, setEntries] = useState<SignatureEntry[]>([]);
   const [mode, setMode] = useState<'draw' | 'upload'>('draw');
   const [label, setLabel] = useState('My signature');
   const [kind, setKind] = useState<'signature' | 'initial'>('signature');
+  const [nib, setNib] = useState<number>(SIGNATURE_NIBS[1]);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const hasInk = useRef(false);
+  const lastPt = useRef<{ x: number; y: number; t: number } | null>(null);
+  const lastW = useRef<number | null>(null);
 
   const refresh = () => getSignatures().then(setEntries);
   useEffect(() => {
     refresh();
   }, []);
 
-  // ── Drawing canvas ──────────────────────────────────────────────────────────
   const ctx = () => canvasRef.current?.getContext('2d') ?? null;
 
   const pos = (e: React.PointerEvent) => {
@@ -33,34 +86,57 @@ export function SignatureModal({ onClose, onUse }: SignatureModalProps) {
   };
 
   const onDown = (e: React.PointerEvent) => {
-    const c = ctx();
-    if (!c) return;
+    if (!ctx()) return;
     drawing.current = true;
     hasInk.current = true;
     const { x, y } = pos(e);
-    c.beginPath();
-    c.moveTo(x, y);
-    canvasRef.current!.setPointerCapture(e.pointerId);
+    lastPt.current = { x, y, t: performance.now() };
+    lastW.current = null;
+    try {
+      canvasRef.current!.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic pointer */
+    }
   };
+
+  // Fountain-pen feel: stroke width varies inversely with pen speed (slow = thick,
+  // fast = thin), smoothed, with round caps so strokes taper naturally.
   const onMove = (e: React.PointerEvent) => {
     if (!drawing.current) return;
     const c = ctx();
-    if (!c) return;
+    const last = lastPt.current;
+    if (!c || !last) return;
     const { x, y } = pos(e);
-    c.lineTo(x, y);
+    const now = performance.now();
+    const dist = Math.hypot(x - last.x, y - last.y);
+    const dt = Math.max(1, now - last.t);
+    const speed = dist / dt; // px per ms
+    const target = nib * clamp(1.7 - speed * 1.1, 0.32, 1.7);
+    const w = lastW.current == null ? target : lastW.current * 0.6 + target * 0.4;
+
     c.strokeStyle = '#0a0a0a';
-    c.lineWidth = 2.5;
     c.lineCap = 'round';
     c.lineJoin = 'round';
+    c.lineWidth = w;
+    c.beginPath();
+    c.moveTo(last.x, last.y);
+    c.lineTo(x, y);
     c.stroke();
+
+    lastPt.current = { x, y, t: now };
+    lastW.current = w;
   };
+
   const onUp = () => {
     drawing.current = false;
+    lastPt.current = null;
   };
+
   const clearCanvas = () => {
     const c = ctx();
     if (c && canvasRef.current) c.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
     hasInk.current = false;
+    lastW.current = null;
   };
 
   const onUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,14 +147,14 @@ export function SignatureModal({ onClose, onUse }: SignatureModalProps) {
     reader.readAsDataURL(file);
   };
 
-  const currentDataUrl = (): string | null => {
-    if (mode === 'upload') return uploadPreview;
+  const currentDataUrl = async (): Promise<string | null> => {
+    if (mode === 'upload') return uploadPreview ? cropDataUrl(uploadPreview) : null;
     if (!hasInk.current || !canvasRef.current) return null;
-    return canvasRef.current.toDataURL('image/png');
+    return cropToInk(canvasRef.current);
   };
 
   const handleSaveAndUse = async () => {
-    const dataUrl = currentDataUrl();
+    const dataUrl = await currentDataUrl();
     if (!dataUrl) return;
     await saveSignature({ label, kind, dataUrl, makeDefault: entries.length === 0 });
     onUse(dataUrl);
@@ -103,7 +179,6 @@ export function SignatureModal({ onClose, onUse }: SignatureModalProps) {
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Saved signatures */}
           {entries.length > 0 && (
             <div>
               <div className="text-xs text-text-muted mb-2">Saved — click to place</div>
@@ -125,15 +200,29 @@ export function SignatureModal({ onClose, onUse }: SignatureModalProps) {
             </div>
           )}
 
-          {/* Create new */}
           <div>
-            <div className="flex gap-1 mb-2">
+            <div className="flex items-center gap-1 mb-2">
               <button onClick={() => setMode('draw')} className={`btn-toolbar text-xs px-2 gap-1 ${mode === 'draw' ? 'bg-accent/30' : ''}`}>
                 <Pen size={14} /> Draw
               </button>
               <button onClick={() => setMode('upload')} className={`btn-toolbar text-xs px-2 gap-1 ${mode === 'upload' ? 'bg-accent/30' : ''}`}>
                 <Upload size={14} /> Upload PNG
               </button>
+              {mode === 'draw' && (
+                <div className="ml-auto flex items-center gap-1 text-xs text-text-muted">
+                  <span>Nib</span>
+                  {SIGNATURE_NIBS.map((n, i) => (
+                    <button
+                      key={n}
+                      onClick={() => setNib(n)}
+                      title={['Fine', 'Medium', 'Broad'][i]}
+                      className={`btn-toolbar w-7 ${nib === n ? 'bg-accent/40' : ''}`}
+                    >
+                      <span className="rounded-full bg-current" style={{ width: [4, 7, 10][i], height: [4, 7, 10][i] }} />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {mode === 'draw' ? (
@@ -147,6 +236,7 @@ export function SignatureModal({ onClose, onUse }: SignatureModalProps) {
                   onPointerDown={onDown}
                   onPointerMove={onMove}
                   onPointerUp={onUp}
+                  onPointerLeave={onUp}
                 />
                 <button onClick={clearCanvas} className="text-xs text-text-muted hover:text-text-primary">
                   Clear

@@ -70,8 +70,16 @@ export interface SignatureEntry {
 export const ANNOTATION_DEFAULTS = {
   TEXT_COLOR: '#1a1a1a',
   TEXT_FONT_SIZE: 0.018, // fraction of page height (~13pt on US Letter)
-  PEN_COLOR: '#d11', // red ink, common for marking
+  PEN_COLOR: '#dd1111', // red ink, common for marking
   PEN_STROKE: 0.003, // fraction of page height
   HIGHLIGHT_COLOR: '#ffe34d',
   HIGHLIGHT_ALPHA: 0.4,
 } as const;
+
+/** Tool setting palettes / sizes. */
+export const PEN_COLORS = ['#dd1111', '#1a1a1a', '#1d4ed8', '#15803d'] as const;
+export const HIGHLIGHT_COLORS = ['#ffe34d', '#9af0a0', '#7dd3fc', '#fca5f5'] as const;
+/** Stroke widths as a fraction of page height: thin / medium / thick. */
+export const PEN_WIDTHS = [0.0015, 0.003, 0.006] as const;
+/** Signature pen nib sizes in canvas px (base width for the fountain-pen stroke). */
+export const SIGNATURE_NIBS = [2, 3.5, 6] as const;

@@ -102,6 +102,9 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [signatureOpen, setSignatureOpen] = useState(false);
+  const [penColor, setPenColor] = useState<string>(ANNOTATION_DEFAULTS.PEN_COLOR);
+  const [penWidth, setPenWidth] = useState<number>(ANNOTATION_DEFAULTS.PEN_STROKE);
+  const [highlightColor, setHighlightColor] = useState<string>(ANNOTATION_DEFAULTS.HIGHLIGHT_COLOR);
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
   const { pdfDoc, totalPages, error } = usePdfDocument(activeFile);
@@ -333,8 +336,9 @@ export default function App() {
     setTool('select');
   }, []);
 
+  // Toggle: clicking the active tool returns to 'select' (normal app behaviour).
   const handleToolChange = useCallback((t: ToolType) => {
-    setTool(t);
+    setTool((prev) => (prev === t ? 'select' : t));
     setSelectedId(null);
     if (t !== 'image' && t !== 'signature') setPendingImage(null);
   }, []);
@@ -453,6 +457,12 @@ export default function App() {
         onOpenSignature={() => setSignatureOpen(true)}
         onSave={() => handleSave(false)}
         isDirty={isDirty}
+        penColor={penColor}
+        onPenColorChange={setPenColor}
+        penWidth={penWidth}
+        onPenWidthChange={setPenWidth}
+        highlightColor={highlightColor}
+        onHighlightColorChange={setHighlightColor}
       />
 
       <TabBar
@@ -488,7 +498,9 @@ export default function App() {
             onZoomChange={setZoom}
             annotations={activeAnnotations}
             tool={tool}
-            annColor={ANNOTATION_DEFAULTS.PEN_COLOR}
+            penColor={penColor}
+            penWidth={penWidth}
+            highlightColor={highlightColor}
             selectedId={selectedId}
             pendingImage={pendingImage}
             onSelectAnnotation={setSelectedId}

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ZOOM } from '../constants/layout';
 import type { ToolType } from '../types/annotations';
+import { PEN_COLORS, HIGHLIGHT_COLORS, PEN_WIDTHS } from '../types/annotations';
 
 const ZOOM_STEPS_REVERSED = [...ZOOM.STEPS].reverse();
 
@@ -38,6 +39,13 @@ interface ToolbarProps {
   onOpenSignature: () => void;
   onSave: () => void;
   isDirty: boolean;
+  // Tool settings
+  penColor: string;
+  onPenColorChange: (c: string) => void;
+  penWidth: number;
+  onPenWidthChange: (w: number) => void;
+  highlightColor: string;
+  onHighlightColorChange: (c: string) => void;
 }
 
 function findNextZoom(current: number, direction: 'in' | 'out'): number {
@@ -64,6 +72,12 @@ export function Toolbar({
   onOpenSignature,
   onSave,
   isDirty,
+  penColor,
+  onPenColorChange,
+  penWidth,
+  onPenWidthChange,
+  highlightColor,
+  onHighlightColorChange,
 }: ToolbarProps) {
   const disabled = totalPages === 0;
   const toolBtn = (active: boolean) =>
@@ -202,12 +216,87 @@ export function Toolbar({
         <Signature size={18} />
       </button>
 
+      {/* Contextual settings for the active tool */}
+      {tool === 'pen' && (
+        <>
+          <div className="w-px h-5 bg-border mx-1" />
+          <Swatches colors={PEN_COLORS} value={penColor} onChange={onPenColorChange} />
+          <WidthPicker widths={PEN_WIDTHS} value={penWidth} onChange={onPenWidthChange} />
+        </>
+      )}
+      {tool === 'highlight' && (
+        <>
+          <div className="w-px h-5 bg-border mx-1" />
+          <Swatches colors={HIGHLIGHT_COLORS} value={highlightColor} onChange={onHighlightColorChange} />
+        </>
+      )}
+
       <div className="w-px h-5 bg-border mx-1" />
 
-      <button onClick={onSave} disabled={disabled} className={`btn-toolbar ${isDirty ? 'text-accent' : ''}`} title="Save (Ctrl+S)">
+      <button
+        onClick={onSave}
+        disabled={disabled}
+        className={`btn-toolbar relative ${isDirty ? 'text-accent' : ''}`}
+        title="Save (Ctrl+S)"
+      >
         <Save size={18} />
-        {isDirty && <span className="ml-0.5 w-1.5 h-1.5 rounded-full bg-accent" />}
+        {isDirty && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" />}
       </button>
+    </div>
+  );
+}
+
+function Swatches({
+  colors,
+  value,
+  onChange,
+}: {
+  colors: readonly string[];
+  value: string;
+  onChange: (c: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 px-1">
+      {colors.map((c) => (
+        <button
+          key={c}
+          onClick={() => onChange(c)}
+          title={c}
+          className="w-4 h-4 rounded-full border"
+          style={{
+            background: c,
+            borderColor: value === c ? '#fff' : 'rgba(255,255,255,0.25)',
+            outline: value === c ? '2px solid var(--color-accent, #3b82f6)' : 'none',
+            outlineOffset: 1,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function WidthPicker({
+  widths,
+  value,
+  onChange,
+}: {
+  widths: readonly number[];
+  value: number;
+  onChange: (w: number) => void;
+}) {
+  const dots = [4, 7, 10];
+  return (
+    <div className="flex items-center gap-1 px-1">
+      {widths.map((w, i) => (
+        <button
+          key={w}
+          onClick={() => onChange(w)}
+          title={['Thin', 'Medium', 'Thick'][i]}
+          className={`btn-toolbar w-7 ${Math.abs(value - w) < 1e-6 ? 'bg-accent/40' : ''}`}
+        >
+          <span className="rounded-full bg-current" style={{ width: dots[i], height: dots[i] }} />
+        </button>
+      ))}
     </div>
   );
 }

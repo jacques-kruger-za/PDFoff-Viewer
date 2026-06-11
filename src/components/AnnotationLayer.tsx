@@ -15,7 +15,6 @@ import { ANNOTATION_DEFAULTS } from '../types/annotations';
 interface PendingImage {
   dataUrl: string;
   kind: 'image' | 'signature';
-  /** intrinsic aspect ratio (w/h) for sensible default placement size */
   aspect: number;
 }
 
@@ -23,7 +22,9 @@ interface AnnotationLayerProps {
   page: number;
   annotations: Annotation[];
   tool: ToolType;
-  color: string;
+  penColor: string;
+  penWidth: number;
+  highlightColor: string;
   selectedId: string | null;
   pendingImage: PendingImage | null;
   onSelect: (id: string | null) => void;
@@ -36,6 +37,14 @@ interface AnnotationLayerProps {
 let annCounter = 0;
 const newId = () => `ann-${Date.now()}-${++annCounter}`;
 
+function capture(e: React.PointerEvent) {
+  try {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  } catch {
+    /* synthetic / released pointer */
+  }
+}
+
 function norm(e: { clientX: number; clientY: number }, rect: DOMRect) {
   return {
     x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
@@ -43,11 +52,24 @@ function norm(e: { clientX: number; clientY: number }, rect: DOMRect) {
   };
 }
 
+function penBounds(a: PenAnnotation) {
+  const xs = a.points.map((p) => p.x);
+  const ys = a.points.map((p) => p.y);
+  return {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs),
+    h: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
 export function AnnotationLayer({
   page,
   annotations,
   tool,
-  color,
+  penColor,
+  penWidth,
+  highlightColor,
   selectedId,
   pendingImage,
   onSelect,
@@ -62,12 +84,11 @@ export function AnnotationLayer({
   const [draftRect, setDraftRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const gestureRef = useRef<
-    | { kind: 'move'; id: string; start: { x: number; y: number }; orig: { x: number; y: number } }
+    | { kind: 'move'; id: string; start: { x: number; y: number }; orig: Annotation }
     | { kind: 'resize'; id: string; aspect: number | null }
     | null
   >(null);
 
-  // Track displayed pixel size for font/stroke math.
   useLayoutEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -80,7 +101,7 @@ export function AnnotationLayer({
 
   const rect = () => rootRef.current!.getBoundingClientRect();
 
-  // ── Create gestures (pen / highlight / text / image) ────────────────────────
+  // ── Drawing gestures (pen / highlight / image) on pointerdown ────────────────
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
@@ -88,30 +109,14 @@ export function AnnotationLayer({
       const p = norm(e, r);
 
       if (tool === 'pen') {
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        capture(e);
         setDraftPen([p]);
       } else if (tool === 'highlight') {
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        capture(e);
         setDraftRect({ x: p.x, y: p.y, w: 0, h: 0 });
-      } else if (tool === 'text') {
-        const id = newId();
-        const a: Annotation = {
-          id,
-          page,
-          type: 'text',
-          x: p.x,
-          y: p.y,
-          w: Math.min(0.4, 1 - p.x),
-          text: '',
-          fontSize: ANNOTATION_DEFAULTS.TEXT_FONT_SIZE,
-          color: ANNOTATION_DEFAULTS.TEXT_COLOR,
-        };
-        onAdd(a);
-        onSelect(id);
-        setEditingId(id);
       } else if ((tool === 'image' || tool === 'signature') && pendingImage) {
         const defW = 0.28;
-        const defH = defW * (r.width / r.height) / pendingImage.aspect;
+        const defH = (defW * (r.width / r.height)) / pendingImage.aspect;
         const a: Annotation = {
           id: newId(),
           page,
@@ -126,24 +131,54 @@ export function AnnotationLayer({
         onAdd(a);
         onSelect(a.id);
         onConsumePendingImage();
-      } else if (tool === 'select' && e.target === rootRef.current) {
-        onSelect(null);
-        setEditingId(null);
       }
     },
     [tool, page, pendingImage, onAdd, onSelect, onConsumePendingImage]
   );
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (draftPen) {
-      setDraftPen((prev) => (prev ? [...prev, norm(e, rect())] : prev));
-    } else if (draftRect) {
-      const p = norm(e, rect());
-      setDraftRect((prev) =>
-        prev ? { x: Math.min(prev.x, p.x), y: Math.min(prev.y, p.y), w: Math.abs(p.x - prev.x), h: Math.abs(p.y - prev.y) } : prev
-      );
-    }
-  }, [draftPen, draftRect]);
+  // Text is created on click (after the full pointer sequence) so the trailing
+  // click can't blur and delete the freshly focused textarea.
+  const onRootClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (tool === 'text' && e.target === rootRef.current) {
+        const p = norm(e, rect());
+        const id = newId();
+        onAdd({
+          id,
+          page,
+          type: 'text',
+          x: p.x,
+          y: p.y,
+          w: Math.min(0.4, 1 - p.x),
+          text: '',
+          fontSize: ANNOTATION_DEFAULTS.TEXT_FONT_SIZE,
+          color: ANNOTATION_DEFAULTS.TEXT_COLOR,
+        });
+        onSelect(id);
+        setEditingId(id);
+      } else if (tool === 'select' && e.target === rootRef.current) {
+        onSelect(null);
+        setEditingId(null);
+      }
+    },
+    [tool, page, onAdd, onSelect]
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (draftPen) {
+        setDraftPen((prev) => (prev ? [...prev, norm(e, rect())] : prev));
+      } else if (draftRect) {
+        const p = norm(e, rect());
+        setDraftRect((prev) =>
+          prev
+            ? { x: Math.min(prev.x, p.x), y: Math.min(prev.y, p.y), w: Math.abs(p.x - prev.x), h: Math.abs(p.y - prev.y) }
+            : prev
+        );
+      }
+    },
+    [draftPen, draftRect]
+  );
 
   const onPointerUp = useCallback(() => {
     if (draftPen) {
@@ -153,8 +188,8 @@ export function AnnotationLayer({
           page,
           type: 'pen',
           points: draftPen,
-          color,
-          strokeWidth: ANNOTATION_DEFAULTS.PEN_STROKE,
+          color: penColor,
+          strokeWidth: penWidth,
         };
         onAdd(a);
       }
@@ -170,27 +205,21 @@ export function AnnotationLayer({
           y: draftRect.y,
           w: draftRect.w,
           h: draftRect.h,
-          color: ANNOTATION_DEFAULTS.HIGHLIGHT_COLOR,
+          color: highlightColor,
         });
       }
       setDraftRect(null);
     }
-  }, [draftPen, draftRect, page, color, onAdd]);
+  }, [draftPen, draftRect, page, penColor, penWidth, highlightColor, onAdd]);
 
-  // ── Move / resize selected box ──────────────────────────────────────────────
+  // ── Move / resize ───────────────────────────────────────────────────────────
   const startMove = useCallback(
     (e: React.PointerEvent, a: Annotation) => {
       if (tool !== 'select') return;
       e.stopPropagation();
       onSelect(a.id);
-      if (a.type === 'pen') return; // pen not movable in v1
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      gestureRef.current = {
-        kind: 'move',
-        id: a.id,
-        start: norm(e, rect()),
-        orig: { x: a.x, y: a.y },
-      };
+      capture(e);
+      gestureRef.current = { kind: 'move', id: a.id, start: norm(e, rect()), orig: a };
     },
     [tool, onSelect]
   );
@@ -198,7 +227,7 @@ export function AnnotationLayer({
   const startResize = useCallback(
     (e: React.PointerEvent, a: Annotation) => {
       e.stopPropagation();
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      capture(e);
       const aspect =
         a.type === 'image' && size.w && size.h ? (a.w * size.w) / (a.h * size.h) : null;
       gestureRef.current = { kind: 'resize', id: a.id, aspect };
@@ -214,7 +243,13 @@ export function AnnotationLayer({
       const a = annotations.find((x) => x.id === g.id);
       if (!a) return;
       if (g.kind === 'move') {
-        onUpdate(g.id, { x: g.orig.x + (p.x - g.start.x), y: g.orig.y + (p.y - g.start.y) } as Partial<Annotation>);
+        const dx = p.x - g.start.x;
+        const dy = p.y - g.start.y;
+        if (g.orig.type === 'pen') {
+          onUpdate(g.id, { points: g.orig.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })) } as Partial<Annotation>);
+        } else {
+          onUpdate(g.id, { x: g.orig.x + dx, y: g.orig.y + dy } as Partial<Annotation>);
+        }
       } else if (g.kind === 'resize' && (a.type === 'image' || a.type === 'highlight' || a.type === 'text')) {
         const nw = Math.max(0.02, p.x - a.x);
         if (a.type === 'text') {
@@ -235,11 +270,11 @@ export function AnnotationLayer({
     gestureRef.current = null;
   }, []);
 
-  // ── Keyboard: delete selected ───────────────────────────────────────────────
+  // Delete / deselect via keyboard.
   useEffect(() => {
     if (!selectedId || editingId) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
         onDelete(selectedId);
         onSelect(null);
       } else if (e.key === 'Escape') {
@@ -252,16 +287,21 @@ export function AnnotationLayer({
 
   const selectMode = tool === 'select' && !pendingImage;
   const cursor =
-    tool === 'text' ? 'text' : tool === 'pen' || tool === 'highlight' ? 'crosshair' : pendingImage ? 'copy' : 'default';
+    tool === 'text'
+      ? 'text'
+      : tool === 'pen' || tool === 'highlight'
+      ? 'crosshair'
+      : pendingImage
+      ? 'copy'
+      : 'default';
 
   return (
     <div
       ref={rootRef}
       className="absolute inset-0"
-      // In select mode the root is click-through so text selection still works;
-      // individual annotations re-enable pointer events on themselves.
       style={{ cursor, pointerEvents: selectMode ? 'none' : 'auto', zIndex: 5 }}
       onPointerDown={onPointerDown}
+      onClick={onRootClick}
       onPointerMove={(e) => {
         onPointerMove(e);
         onRootPointerMoveGesture(e);
@@ -271,7 +311,7 @@ export function AnnotationLayer({
         endGesture();
       }}
     >
-      {/* Pen strokes (committed) + live draft */}
+      {/* Pen strokes + selection + live draft */}
       {size.w > 0 && (
         <svg
           width={size.w}
@@ -281,23 +321,57 @@ export function AnnotationLayer({
         >
           {annotations
             .filter((a): a is PenAnnotation => a.type === 'pen')
-            .map((a) => (
-              <polyline
-                key={a.id}
-                points={a.points.map((pt) => `${pt.x * size.w},${pt.y * size.h}`).join(' ')}
-                fill="none"
-                stroke={a.color}
-                strokeWidth={Math.max(0.5, a.strokeWidth * size.h)}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ))}
+            .map((a) => {
+              const pts = a.points.map((pt) => `${pt.x * size.w},${pt.y * size.h}`).join(' ');
+              const selected = a.id === selectedId;
+              const b = penBounds(a);
+              return (
+                <g key={a.id}>
+                  <polyline
+                    points={pts}
+                    fill="none"
+                    stroke={a.color}
+                    strokeWidth={Math.max(0.5, a.strokeWidth * size.h)}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  {/* invisible fat hit-line for selecting/moving in select mode */}
+                  {selectMode && (
+                    <polyline
+                      points={pts}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={Math.max(12, a.strokeWidth * size.h + 10)}
+                      style={{ pointerEvents: 'stroke', cursor: 'move' }}
+                      onPointerDown={(e) => startMove(e, a)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(a.id);
+                      }}
+                    />
+                  )}
+                  {selected && (
+                    <rect
+                      x={b.x * size.w - 4}
+                      y={b.y * size.h - 4}
+                      width={b.w * size.w + 8}
+                      height={b.h * size.h + 8}
+                      fill="none"
+                      stroke="#3b82f6"
+                      strokeWidth={1}
+                      strokeDasharray="4 3"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )}
+                </g>
+              );
+            })}
           {draftPen && (
             <polyline
               points={draftPen.map((pt) => `${pt.x * size.w},${pt.y * size.h}`).join(' ')}
               fill="none"
-              stroke={color}
-              strokeWidth={Math.max(0.5, ANNOTATION_DEFAULTS.PEN_STROKE * size.h)}
+              stroke={penColor}
+              strokeWidth={Math.max(0.5, penWidth * size.h)}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -430,7 +504,7 @@ export function AnnotationLayer({
             top: `${draftRect.y * 100}%`,
             width: `${draftRect.w * 100}%`,
             height: `${draftRect.h * 100}%`,
-            background: ANNOTATION_DEFAULTS.HIGHLIGHT_COLOR,
+            background: highlightColor,
             opacity: ANNOTATION_DEFAULTS.HIGHLIGHT_ALPHA,
             pointerEvents: 'none',
           }}

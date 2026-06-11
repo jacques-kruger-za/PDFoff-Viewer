@@ -9,6 +9,8 @@ import {
 } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PdfPage } from './PdfPage';
+import { ZOOM } from '../constants/layout';
+import { TIMING } from '../constants/timing';
 
 interface PdfViewerProps {
   pdfDoc: PDFDocumentProxy;
@@ -18,15 +20,6 @@ interface PdfViewerProps {
   onCurrentPageChange: (page: number) => void;
   onZoomChange: (zoom: number) => void;
 }
-
-const AUTO_SCROLL_RESET_MS = 500;
-const WHEEL_RENDER_SETTLE_MS = 250;
-const WHEEL_ZOOM_STREAK_WINDOW_MS = 140;
-const WHEEL_ZOOM_BASE_STEP = 1.06;
-const WHEEL_ZOOM_ACCELERATION = 0.02;
-const WHEEL_ZOOM_MAX_STREAK = 8;
-const ZOOM_ANIMATION_EASING = 0.26;
-const ZOOM_ANIMATION_STOP_EPSILON = 0.0015;
 
 export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function PdfViewer({
   pdfDoc,
@@ -75,7 +68,7 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
     autoScrollTimeoutRef.current = window.setTimeout(() => {
       isAutoScrollingRef.current = false;
       autoScrollTimeoutRef.current = null;
-    }, AUTO_SCROLL_RESET_MS);
+    }, TIMING.AUTO_SCROLL_RESET);
   }, [clearAutoScrollTimeout]);
 
   useEffect(() => clearAutoScrollTimeout, [clearAutoScrollTimeout]);
@@ -89,18 +82,18 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
       const target = targetZoomRef.current;
       const delta = target - current;
 
-      if (Math.abs(delta) <= ZOOM_ANIMATION_STOP_EPSILON) {
+      if (Math.abs(delta) <= ZOOM.ANIMATION_STOP_EPSILON) {
         displayedZoomRef.current = target;
         setDisplayedZoom(target);
         zoomAnimationFrameRef.current = null;
 
-        if (performance.now() - lastWheelTimeRef.current >= WHEEL_RENDER_SETTLE_MS) {
+        if (performance.now() - lastWheelTimeRef.current >= TIMING.WHEEL_RENDER_SETTLE) {
           zoomAnchorRef.current = null;
         }
         return;
       }
 
-      const nextZoom = current + delta * ZOOM_ANIMATION_EASING;
+      const nextZoom = current + delta * ZOOM.ANIMATION_EASING;
       displayedZoomRef.current = nextZoom;
       setDisplayedZoom(nextZoom);
       zoomAnimationFrameRef.current = window.requestAnimationFrame(tick);
@@ -176,17 +169,17 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
       };
 
       const now = performance.now();
-      if (now - lastWheelTimeRef.current < WHEEL_ZOOM_STREAK_WINDOW_MS) {
-        wheelStreakRef.current = Math.min(wheelStreakRef.current + 1, WHEEL_ZOOM_MAX_STREAK);
+      if (now - lastWheelTimeRef.current < TIMING.WHEEL_ZOOM_STREAK_WINDOW) {
+        wheelStreakRef.current = Math.min(wheelStreakRef.current + 1, ZOOM.WHEEL_MAX_STREAK);
       } else {
         wheelStreakRef.current = 0;
       }
       lastWheelTimeRef.current = now;
 
-      const step = WHEEL_ZOOM_BASE_STEP + wheelStreakRef.current * WHEEL_ZOOM_ACCELERATION;
+      const step = ZOOM.WHEEL_BASE_STEP + wheelStreakRef.current * ZOOM.WHEEL_ACCELERATION;
       const direction = e.deltaY < 0 ? 1 : -1;
       const factor = direction > 0 ? step : 1 / step;
-      const nextZoom = Math.max(0.1, Math.min(5, currentZoom * factor));
+      const nextZoom = Math.max(ZOOM.MIN, Math.min(ZOOM.MAX, currentZoom * factor));
       const roundedZoom = Math.round(nextZoom * 1000) / 1000;
 
       targetZoomRef.current = roundedZoom;
@@ -257,11 +250,11 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
 
       {contextMenu && (
         <div
-          className="fixed z-50 min-w-[140px] rounded border border-neutral-600 bg-neutral-800 py-1 shadow-xl"
+          className="context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-700"
+            className="context-menu-item gap-2"
             onClick={handleCopy}
           >
             Copy

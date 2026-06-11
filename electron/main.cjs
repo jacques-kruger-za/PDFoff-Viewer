@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { IPC, MENU_COMMANDS } = require('./constants.cjs');
 
 const isDev = process.argv.includes('--dev');
 
@@ -10,7 +11,7 @@ let pendingFiles = [];
 
 function sendMenuCommand(command) {
   if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('menu-command', command);
+    mainWindow.webContents.send(IPC.MENU_COMMAND, command);
   }
 }
 
@@ -52,7 +53,7 @@ function createWindow() {
         {
           label: 'Close Tab',
           accelerator: 'CmdOrCtrl+W',
-          click: () => sendMenuCommand('close-tab'),
+          click: () => sendMenuCommand(MENU_COMMANDS.CLOSE_TAB),
         },
         {
           label: 'Print',
@@ -93,7 +94,7 @@ function createWindow() {
           label: 'Show Page Sidebar',
           type: 'checkbox',
           checked: true,
-          click: (menuItem) => sendMenuCommand(menuItem.checked ? 'show-sidebar' : 'hide-sidebar'),
+          click: (menuItem) => sendMenuCommand(menuItem.checked ? MENU_COMMANDS.SHOW_SIDEBAR : MENU_COMMANDS.HIDE_SIDEBAR),
         },
         { type: 'separator' },
         { role: 'zoomIn' },
@@ -170,32 +171,34 @@ function consumePendingFiles() {
   return files;
 }
 
-function readPdfPayloads(filePaths) {
-  return filePaths.map((filePath) => {
-    const buffer = fs.readFileSync(filePath);
-    return {
-      path: filePath,
-      name: path.basename(filePath),
-      data: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
-    };
-  });
+async function readPdfPayloads(filePaths) {
+  return Promise.all(
+    filePaths.map(async (filePath) => {
+      const buffer = await fs.promises.readFile(filePath);
+      return {
+        path: filePath,
+        name: path.basename(filePath),
+        data: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+      };
+    })
+  );
 }
 
 // Renderer pulls pending files after React mounts.
-ipcMain.handle('consume-pending-pdf-files', () => {
+ipcMain.handle(IPC.CONSUME_PENDING, async () => {
   return readPdfPayloads(consumePendingFiles());
 });
 
-ipcMain.handle('show-in-folder', (_event, filePath) => {
+ipcMain.handle(IPC.SHOW_IN_FOLDER, (_event, filePath) => {
   shell.showItemInFolder(filePath);
 });
 
-ipcMain.on('open-file-dialog', () => openFileDialog());
+ipcMain.on(IPC.OPEN_FILE_DIALOG, () => openFileDialog());
 
-ipcMain.on('open-dropped-files', (_event, paths) => {
+ipcMain.on(IPC.OPEN_DROPPED_FILES, async (_event, paths) => {
   const valid = paths.filter((p) => p.toLowerCase().endsWith('.pdf') && fs.existsSync(p));
   if (valid.length > 0) {
-    mainWindow.webContents.send('open-files', readPdfPayloads(valid));
+    mainWindow.webContents.send(IPC.OPEN_FILES, await readPdfPayloads(valid));
   }
 });
 
@@ -207,13 +210,13 @@ async function openFileDialog() {
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    mainWindow.webContents.send('open-files', readPdfPayloads(result.filePaths));
+    mainWindow.webContents.send(IPC.OPEN_FILES, await readPdfPayloads(result.filePaths));
   }
 }
 
-function sendOrQueueFiles(filePaths) {
+async function sendOrQueueFiles(filePaths) {
   if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-    mainWindow.webContents.send('open-files', readPdfPayloads(filePaths));
+    mainWindow.webContents.send(IPC.OPEN_FILES, await readPdfPayloads(filePaths));
   } else {
     pendingFiles.push(...filePaths);
   }

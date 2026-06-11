@@ -1,21 +1,23 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { IPC } = require('./constants.cjs');
+
 contextBridge.exposeInMainWorld('electronAPI', {
-  openFileDialog: () => ipcRenderer.send('open-file-dialog'),
+  openFileDialog: () => ipcRenderer.send(IPC.OPEN_FILE_DIALOG),
   openDroppedFiles: (files) => {
     const paths = files.map((f) => webUtils.getPathForFile(f));
-    ipcRenderer.send('open-dropped-files', paths);
+    ipcRenderer.send(IPC.OPEN_DROPPED_FILES, paths);
   },
   onOpenFiles: (callback) => {
     const handler = (_event, files) => callback(files);
-    ipcRenderer.on('open-files', handler);
-    return () => ipcRenderer.removeListener('open-files', handler);
+    ipcRenderer.on(IPC.OPEN_FILES, handler);
+    return () => ipcRenderer.removeListener(IPC.OPEN_FILES, handler);
   },
   onMenuCommand: (callback) => {
     const handler = (_event, command) => callback(command);
-    ipcRenderer.on('menu-command', handler);
-    return () => ipcRenderer.removeListener('menu-command', handler);
+    ipcRenderer.on(IPC.MENU_COMMAND, handler);
+    return () => ipcRenderer.removeListener(IPC.MENU_COMMAND, handler);
   },
-  consumePendingPdfFiles: () => ipcRenderer.invoke('consume-pending-pdf-files'),
-  showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
+  consumePendingPdfFiles: () => ipcRenderer.invoke(IPC.CONSUME_PENDING),
+  showInFolder: (filePath) => ipcRenderer.invoke(IPC.SHOW_IN_FOLDER, filePath),
   isElectron: true,
 });

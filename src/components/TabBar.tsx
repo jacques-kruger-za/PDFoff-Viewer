@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { PdfFile } from '../types/pdf';
+import { TIMING } from '../constants/timing';
 
 interface TabBarProps {
   files: PdfFile[];
@@ -19,7 +20,7 @@ export function TabBar({ files, activeFileId, onSelectFile, onCloseFile }: TabBa
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     hoverTimeoutRef.current = window.setTimeout(() => {
       setTooltip({ x: rect.left, y: rect.bottom + 4, text });
-    }, 400);
+    }, TIMING.TOOLTIP_DELAY);
   }, []);
 
   const hideTooltip = useCallback(() => {
@@ -105,7 +106,7 @@ export function TabBar({ files, activeFileId, onSelectFile, onCloseFile }: TabBa
 
       {tooltip && (
         <div
-          className="pointer-events-none fixed z-[9999] max-w-[500px] rounded border border-neutral-600 bg-neutral-800 px-2.5 py-1.5 text-xs text-text-muted shadow-xl"
+          className="tooltip-popup"
           style={{ left: tooltip.x, top: tooltip.y }}
         >
           {tooltip.text}
@@ -114,12 +115,12 @@ export function TabBar({ files, activeFileId, onSelectFile, onCloseFile }: TabBa
 
       {contextMenu && (
         <div
-          className="fixed z-[9999] min-w-[160px] rounded border border-neutral-600 bg-neutral-800 py-1 shadow-xl"
+          className="context-menu min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {contextFile?.path && (
             <button
-              className="flex w-full items-center px-4 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-700"
+              className="context-menu-item"
               onClick={handleGoToFolder}
             >
               Go to Folder

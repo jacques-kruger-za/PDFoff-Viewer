@@ -4,9 +4,3 @@ export interface PdfFile {
   data: ArrayBuffer;
   path?: string;
 }
-
-export interface ViewerState {
-  currentPage: number;
-  totalPages: number;
-  zoom: number;
-}

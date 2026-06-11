@@ -6,8 +6,9 @@ import { ThumbnailSidebar } from './components/ThumbnailSidebar';
 import { EmptyState } from './components/EmptyState';
 import { DocumentLoadingState } from './components/DocumentLoadingState';
 import { usePdfDocument } from './hooks/usePdfDocument';
-import { BASE_SCALE } from './components/PdfPage';
 import type { PdfFile } from './types/pdf';
+import { MENU_COMMANDS } from './constants/ipc';
+import { ZOOM, LAYOUT } from './constants/layout';
 
 declare global {
   interface Window {
@@ -156,13 +157,13 @@ export default function App() {
 
     return window.electronAPI.onMenuCommand((command) => {
       switch (command) {
-        case 'close-tab':
+        case MENU_COMMANDS.CLOSE_TAB:
           handleCloseActiveFile();
           break;
-        case 'show-sidebar':
+        case MENU_COMMANDS.SHOW_SIDEBAR:
           setIsSidebarVisible(true);
           break;
-        case 'hide-sidebar':
+        case MENU_COMMANDS.HIDE_SIDEBAR:
           setIsSidebarVisible(false);
           break;
         default:
@@ -196,28 +197,24 @@ export default function App() {
     }
   }, []);
 
-  // Fit-page: scale so the full page (width & height) fits in the viewer
   const handleFitPage = useCallback(async () => {
     if (!pdfDoc || !viewerRef.current) return;
     const page = await pdfDoc.getPage(currentPage);
     const vp = page.getViewport({ scale: 1 });
     const container = viewerRef.current;
-    // Subtract padding (p-4 = 16px each side)
-    const availW = container.clientWidth - 32;
-    const availH = container.clientHeight - 32;
-    const fitZoom = Math.min(availW / (vp.width * BASE_SCALE), availH / (vp.height * BASE_SCALE));
+    const availW = container.clientWidth - LAYOUT.CONTAINER_PADDING;
+    const availH = container.clientHeight - LAYOUT.CONTAINER_PADDING;
+    const fitZoom = Math.min(availW / (vp.width * ZOOM.BASE_SCALE), availH / (vp.height * ZOOM.BASE_SCALE));
     setZoom(Math.round(fitZoom * 1000) / 1000);
   }, [pdfDoc, currentPage]);
 
-  // Fit-width: scale so the page width fills the viewer width
   const handleFitWidth = useCallback(async () => {
     if (!pdfDoc || !viewerRef.current) return;
     const page = await pdfDoc.getPage(currentPage);
     const vp = page.getViewport({ scale: 1 });
     const container = viewerRef.current;
-    // Subtract padding + scrollbar (~16px)
-    const availW = container.clientWidth - 48;
-    const fitZoom = availW / (vp.width * BASE_SCALE);
+    const availW = container.clientWidth - LAYOUT.CONTAINER_PADDING_WITH_SCROLLBAR;
+    const fitZoom = availW / (vp.width * ZOOM.BASE_SCALE);
     setZoom(Math.round(fitZoom * 1000) / 1000);
   }, [pdfDoc, currentPage]);
 

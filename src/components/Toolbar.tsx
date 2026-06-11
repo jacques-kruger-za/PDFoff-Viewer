@@ -10,6 +10,9 @@ import {
   MoveHorizontal,
   RotateCcw,
 } from 'lucide-react';
+import { ZOOM } from '../constants/layout';
+
+const ZOOM_STEPS_REVERSED = [...ZOOM.STEPS].reverse();
 
 interface ToolbarProps {
   currentPage: number;
@@ -22,19 +25,13 @@ interface ToolbarProps {
   onFitWidth: () => void;
 }
 
-const ZOOM_STEPS = [
-  0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
-  1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2, 2.5, 3, 4, 5,
-];
-
 function findNextZoom(current: number, direction: 'in' | 'out'): number {
   if (direction === 'in') {
-    const next = ZOOM_STEPS.find((z) => z > current + 0.01);
-    return next ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    const next = ZOOM.STEPS.find((z) => z > current + 0.01);
+    return next ?? ZOOM.STEPS[ZOOM.STEPS.length - 1];
   }
-  const reversed = [...ZOOM_STEPS].reverse();
-  const next = reversed.find((z) => z < current - 0.01);
-  return next ?? ZOOM_STEPS[0];
+  const next = ZOOM_STEPS_REVERSED.find((z) => z < current - 0.01);
+  return next ?? ZOOM.STEPS[0];
 }
 
 export function Toolbar({
@@ -53,7 +50,7 @@ export function Toolbar({
     <div className="flex items-center gap-1 px-3 py-1.5 bg-surface border-b border-border select-none">
       <button
         onClick={onOpenFile}
-        className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar-lg"
         title="Open PDF"
       >
         <FolderOpen size={18} />
@@ -64,7 +61,7 @@ export function Toolbar({
       <button
         onClick={() => onPageChange(1)}
         disabled={disabled || currentPage <= 1}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar"
         title="First page"
       >
         <ChevronFirst size={18} />
@@ -72,7 +69,7 @@ export function Toolbar({
       <button
         onClick={() => onPageChange(currentPage - 1)}
         disabled={disabled || currentPage <= 1}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar"
         title="Previous page"
       >
         <ChevronLeft size={18} />
@@ -97,7 +94,7 @@ export function Toolbar({
       <button
         onClick={() => onPageChange(currentPage + 1)}
         disabled={disabled || currentPage >= totalPages}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar"
         title="Next page"
       >
         <ChevronRight size={18} />
@@ -105,7 +102,7 @@ export function Toolbar({
       <button
         onClick={() => onPageChange(totalPages)}
         disabled={disabled || currentPage >= totalPages}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar"
         title="Last page"
       >
         <ChevronLast size={18} />
@@ -115,8 +112,8 @@ export function Toolbar({
 
       <button
         onClick={() => onZoomChange(findNextZoom(zoom, 'out'))}
-        disabled={disabled || zoom <= ZOOM_STEPS[0]}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        disabled={disabled || zoom <= ZOOM.STEPS[0]}
+        className="btn-toolbar"
         title="Zoom out"
       >
         <Minus size={18} />
@@ -126,8 +123,8 @@ export function Toolbar({
       </span>
       <button
         onClick={() => onZoomChange(findNextZoom(zoom, 'in'))}
-        disabled={disabled || zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        disabled={disabled || zoom >= ZOOM.STEPS[ZOOM.STEPS.length - 1]}
+        className="btn-toolbar"
         title="Zoom in"
       >
         <Plus size={18} />
@@ -138,7 +135,7 @@ export function Toolbar({
       <button
         onClick={onFitPage}
         disabled={disabled}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar"
         title="Fit full page"
       >
         <Maximize size={18} />
@@ -146,7 +143,7 @@ export function Toolbar({
       <button
         onClick={onFitWidth}
         disabled={disabled}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar"
         title="Fit width"
       >
         <MoveHorizontal size={18} />
@@ -154,7 +151,7 @@ export function Toolbar({
       <button
         onClick={() => onZoomChange(1)}
         disabled={disabled}
-        className="p-1 rounded hover:bg-surface-hover disabled:opacity-30 disabled:cursor-default text-text-secondary hover:text-text-primary transition-colors"
+        className="btn-toolbar"
         title="Reset zoom (100%)"
       >
         <RotateCcw size={18} />

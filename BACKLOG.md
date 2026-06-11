@@ -17,7 +17,7 @@ Raw inbox for features, issues, and bugs. Unsorted, ungroomed, no sequencing. Ca
 
 ## From GitHub Issues
 
-<!-- Auto-populated by /project-hygiene --fix when open GitHub issues aren't reflected here. -->
+- [ ] #1 — Performance degrades above 300% zoom (partially mitigated by 500% cap in `1af9a5b`; verify whether still reproducible)
 
 ## From Sessions
 

@@ -4,11 +4,11 @@ Groomed, prioritised, sequenced work. Items here have been scoped enough to sche
 
 ## Now
 
-- [ ] _TODO_
+- [ ] v1.2 — DRY refactor: extract IPC names, layout, zoom, and timing into shared constants
 
 ## Next
 
-- [ ] _TODO_
+- [ ] Fix: performance degrades above 300% zoom (GitHub #1)
 
 ## Later
 
@@ -17,11 +17,12 @@ Groomed, prioritised, sequenced work. Items here have been scoped enough to sche
 
 ## Done
 
-- **v1.1 / 2026-04-??** — Standardize file open pipeline, tab tooltips, zoom fixes (`144af66`)
-- **v1.1 / 2026-04-??** — Cap maximum zoom at 500% to prevent stalling (`1af9a5b`)
-- **v1.1 / 2026-04-??** — Boot splash, app menus, smooth zoom, UI polish (`d7b1dd2`)
-- **2026-04-01** — Browser-style tabs for multi-document; registers as Windows PDF handler
-- **2026-03-12** — Tauri v2 + mupdf architecture, native GDI printing
+- **v1.1 / 2026-04-12** — Standardize file open pipeline, tab tooltips, zoom fixes (`144af66`)
+- **v1.1 / 2026-04-12** — Cap maximum zoom at 500% to prevent stalling (`1af9a5b`)
+- **v1.1 / 2026-04-12** — Eliminate flicker on PDF.js re-render handover (`b30f6e6`)
+- **v1.1 / 2026-04-12** — Boot splash, app menus, smooth zoom, UI polish (`d7b1dd2`)
+- **2026-04-10** — Thumbnail sidebar, fit controls, welcome screen
+- **2026-04-09** — Initial Electron + React + PDF.js build, NSIS installer, Windows file association
 
 ---
 

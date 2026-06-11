@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { TabBar } from './components/TabBar';
 import { PdfViewer } from './components/PdfViewer';
@@ -9,7 +9,7 @@ import { SignatureModal } from './components/SignatureModal';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import type { PdfFile } from './types/pdf';
 import type { Annotation, ToolType, SignatureEntry } from './types/annotations';
-import { ANNOTATION_DEFAULTS } from './types/annotations';
+import { ANNOTATION_DEFAULTS, DEFAULT_BODY_PT } from './types/annotations';
 import { exportPdf } from './services/pdfExport';
 import { MENU_COMMANDS } from './constants/ipc';
 import { ZOOM, LAYOUT } from './constants/layout';
@@ -108,6 +108,8 @@ export default function App() {
   const [penWidth, setPenWidth] = useState<number>(ANNOTATION_DEFAULTS.PEN_STROKE);
   const [highlightColor, setHighlightColor] = useState<string>(ANNOTATION_DEFAULTS.HIGHLIGHT_COLOR);
   const [signatureHeight, setSignatureHeight] = useState<number>(ANNOTATION_DEFAULTS.SIGNATURE_HEIGHT);
+  const [textFontPt, setTextFontPt] = useState<number>(DEFAULT_BODY_PT);
+  const [pageHeightPt, setPageHeightPt] = useState<number>(792); // US Letter default
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
   const { pdfDoc, totalPages, error } = usePdfDocument(activeFile);
@@ -304,8 +306,12 @@ export default function App() {
   }, [pdfDoc, currentPage]);
 
   // ── Annotations ─────────────────────────────────────────────────────────────
-  const activeAnnotations = activeFileId ? annotationsByFile[activeFileId] ?? [] : [];
+  const activeAnnotations = useMemo(
+    () => (activeFileId ? annotationsByFile[activeFileId] ?? [] : []),
+    [activeFileId, annotationsByFile]
+  );
   const isDirty = activeFileId ? !!dirtyFiles[activeFileId] : false;
+  const selectedAnnotation = selectedId ? activeAnnotations.find((a) => a.id === selectedId) ?? null : null;
 
   const markDirty = useCallback((fileId: string) => {
     setDirtyFiles((prev) => ({ ...prev, [fileId]: true }));
@@ -350,6 +356,48 @@ export default function App() {
       markDirty(activeFileId);
     },
     [activeFileId, markDirty]
+  );
+
+  // Detect the active document's body text size to use as the default font size.
+  useEffect(() => {
+    if (!pdfDoc) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const page = await pdfDoc.getPage(1);
+        const vp = page.getViewport({ scale: 1 });
+        const tc = await page.getTextContent();
+        if (cancelled) return;
+        setPageHeightPt(vp.height);
+        const counts = new Map<number, number>();
+        for (const it of tc.items as Array<{ height?: number; str?: string }>) {
+          const h = Math.round(it.height ?? 0);
+          if (h >= 5 && h <= 48) counts.set(h, (counts.get(h) ?? 0) + (it.str?.length || 1));
+        }
+        let bodyPt = DEFAULT_BODY_PT;
+        let best = 0;
+        for (const [h, c] of counts) if (c > best) { best = c; bodyPt = h; }
+        setTextFontPt(bodyPt);
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfDoc]);
+
+  const handleFontSizeChange = useCallback(
+    (pt: number) => {
+      setTextFontPt(pt);
+      if (selectedId) {
+        const sel = activeAnnotations.find((a) => a.id === selectedId);
+        if (sel && sel.type === 'text' && pageHeightPt > 0) {
+          handleUpdateAnnotation(selectedId, { fontSize: pt / pageHeightPt });
+        }
+      }
+    },
+    [selectedId, activeAnnotations, pageHeightPt, handleUpdateAnnotation]
   );
 
   const handleConsumePendingImage = useCallback(() => {
@@ -521,6 +569,13 @@ export default function App() {
         onPenWidthChange={setPenWidth}
         highlightColor={highlightColor}
         onHighlightColorChange={setHighlightColor}
+        showFontSize={tool === 'text' || selectedAnnotation?.type === 'text'}
+        fontSizePt={
+          selectedAnnotation?.type === 'text'
+            ? Math.round(selectedAnnotation.fontSize * pageHeightPt)
+            : textFontPt
+        }
+        onFontSizeChange={handleFontSizeChange}
       />
 
       <TabBar
@@ -560,6 +615,7 @@ export default function App() {
             penWidth={penWidth}
             highlightColor={highlightColor}
             signatureHeight={signatureHeight}
+            textFontSize={pageHeightPt > 0 ? textFontPt / pageHeightPt : ANNOTATION_DEFAULTS.TEXT_FONT_SIZE}
             selectedId={selectedId}
             pendingImage={pendingImage}
             onSelectAnnotation={setSelectedId}

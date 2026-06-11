@@ -26,6 +26,7 @@ interface AnnotationLayerProps {
   penWidth: number;
   highlightColor: string;
   signatureHeight: number;
+  textFontSize: number;
   selectedId: string | null;
   pendingImage: PendingImage | null;
   onSelect: (id: string | null) => void;
@@ -72,6 +73,7 @@ export function AnnotationLayer({
   penWidth,
   highlightColor,
   signatureHeight,
+  textFontSize,
   selectedId,
   pendingImage,
   onSelect,
@@ -161,7 +163,7 @@ export function AnnotationLayer({
           y: p.y,
           w: Math.min(ANNOTATION_DEFAULTS.TEXT_WIDTH, 1 - p.x),
           text: '',
-          fontSize: ANNOTATION_DEFAULTS.TEXT_FONT_SIZE,
+          fontSize: textFontSize,
           color: ANNOTATION_DEFAULTS.TEXT_COLOR,
         });
         onSelect(id);
@@ -171,7 +173,7 @@ export function AnnotationLayer({
         setEditingId(null);
       }
     },
-    [tool, page, onAdd, onSelect]
+    [tool, page, textFontSize, onAdd, onSelect]
   );
 
   const onPointerMove = useCallback(

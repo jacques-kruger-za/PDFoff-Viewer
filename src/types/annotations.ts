@@ -89,3 +89,8 @@ export const HIGHLIGHT_COLORS = ['#ffe34d', '#9af0a0', '#7dd3fc', '#fca5f5'] as 
 export const PEN_WIDTHS = [0.0015, 0.003, 0.006] as const;
 /** Signature pen nib sizes in canvas px (base width for the fountain-pen stroke). */
 export const SIGNATURE_NIBS = [2, 3.5, 6] as const;
+
+/** Selectable text font sizes in points. */
+export const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48] as const;
+/** Fallback body text size (pt) when a document's size can't be detected. */
+export const DEFAULT_BODY_PT = 12;

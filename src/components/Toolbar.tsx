@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { ZOOM } from '../constants/layout';
 import type { ToolType } from '../types/annotations';
-import { PEN_COLORS, HIGHLIGHT_COLORS, PEN_WIDTHS } from '../types/annotations';
+import { PEN_COLORS, HIGHLIGHT_COLORS, PEN_WIDTHS, FONT_SIZES } from '../types/annotations';
 
 const ZOOM_STEPS_REVERSED = [...ZOOM.STEPS].reverse();
 
@@ -46,6 +46,9 @@ interface ToolbarProps {
   onPenWidthChange: (w: number) => void;
   highlightColor: string;
   onHighlightColorChange: (c: string) => void;
+  showFontSize: boolean;
+  fontSizePt: number;
+  onFontSizeChange: (pt: number) => void;
 }
 
 function findNextZoom(current: number, direction: 'in' | 'out'): number {
@@ -78,6 +81,9 @@ export function Toolbar({
   onPenWidthChange,
   highlightColor,
   onHighlightColorChange,
+  showFontSize,
+  fontSizePt,
+  onFontSizeChange,
 }: ToolbarProps) {
   const disabled = totalPages === 0;
   const toolBtn = (active: boolean) =>
@@ -230,6 +236,12 @@ export function Toolbar({
           <Swatches colors={HIGHLIGHT_COLORS} value={highlightColor} onChange={onHighlightColorChange} />
         </>
       )}
+      {showFontSize && (
+        <>
+          <div className="w-px h-5 bg-border mx-1" />
+          <FontSizePicker value={fontSizePt} onChange={onFontSizeChange} />
+        </>
+      )}
 
       <div className="w-px h-5 bg-border mx-1" />
 
@@ -242,6 +254,29 @@ export function Toolbar({
         <Save size={18} />
         {isDirty && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" />}
       </button>
+    </div>
+  );
+}
+
+function FontSizePicker({ value, onChange }: { value: number; onChange: (pt: number) => void }) {
+  // Include the detected/current size even if it isn't a standard option.
+  const options = FONT_SIZES.includes(value as (typeof FONT_SIZES)[number])
+    ? [...FONT_SIZES]
+    : [...FONT_SIZES, value].sort((a, b) => a - b);
+  return (
+    <div className="flex items-center gap-1 ml-1" title="Font size">
+      <span className="text-xs text-text-muted">A</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="bg-neutral-900 border border-border rounded px-1.5 py-0.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+      >
+        {options.map((pt) => (
+          <option key={pt} value={pt}>
+            {pt} pt
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

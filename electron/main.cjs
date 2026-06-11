@@ -55,6 +55,16 @@ function createWindow() {
           click: () => openFileDialog(),
         },
         {
+          label: 'Save',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => sendMenuCommand(MENU_COMMANDS.SAVE),
+        },
+        {
+          label: 'Save As...',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => sendMenuCommand(MENU_COMMANDS.SAVE_AS),
+        },
+        {
           label: 'Close Tab',
           accelerator: 'CmdOrCtrl+W',
           click: () => sendMenuCommand(MENU_COMMANDS.CLOSE_TAB),
@@ -195,6 +205,110 @@ ipcMain.handle(IPC.CONSUME_PENDING, async () => {
 
 ipcMain.handle(IPC.SHOW_IN_FOLDER, (_event, filePath) => {
   shell.showItemInFolder(filePath);
+});
+
+// ── Save: write modified PDF bytes back to disk ───────────────────────────────
+
+// Save to a known path (overwrite original). Returns { ok, path } or { ok:false, error }.
+ipcMain.handle(IPC.SAVE_FILE, async (_event, { path: filePath, data }) => {
+  try {
+    if (!filePath) return { ok: false, error: 'no-path' };
+    await fs.promises.writeFile(filePath, Buffer.from(data));
+    return { ok: true, path: filePath };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+// Save As: prompt for a destination, then write. Returns { ok, path } or { ok:false, canceled }.
+ipcMain.handle(IPC.SAVE_FILE_AS, async (_event, { data, defaultName }) => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save PDF As',
+      defaultPath: defaultName || 'document.pdf',
+      filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    await fs.promises.writeFile(result.filePath, Buffer.from(data));
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+// ── Signature store: PNGs in userData/signatures + index.json ──────────────────
+
+function signaturesDir() {
+  return path.join(app.getPath('userData'), 'signatures');
+}
+
+async function readSignatureIndex() {
+  const indexPath = path.join(signaturesDir(), 'index.json');
+  try {
+    const raw = await fs.promises.readFile(indexPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeSignatureIndex(entries) {
+  const dir = signaturesDir();
+  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.writeFile(
+    path.join(dir, 'index.json'),
+    JSON.stringify(entries, null, 2)
+  );
+}
+
+// Returns [{ id, label, kind, isDefault, dataUrl }]
+ipcMain.handle(IPC.GET_SIGNATURES, async () => {
+  const entries = await readSignatureIndex();
+  const dir = signaturesDir();
+  const out = [];
+  for (const e of entries) {
+    try {
+      const png = await fs.promises.readFile(path.join(dir, `${e.id}.png`));
+      out.push({ ...e, dataUrl: `data:image/png;base64,${png.toString('base64')}` });
+    } catch {
+      // skip entries whose PNG is missing
+    }
+  }
+  return out;
+});
+
+// Accepts { id, label, kind, dataUrl, makeDefault }. Writes PNG + index. Returns saved entry.
+ipcMain.handle(IPC.SAVE_SIGNATURE, async (_event, { id, label, kind, dataUrl, makeDefault }) => {
+  const dir = signaturesDir();
+  await fs.promises.mkdir(dir, { recursive: true });
+  const base64 = String(dataUrl).replace(/^data:image\/png;base64,/, '');
+  await fs.promises.writeFile(path.join(dir, `${id}.png`), Buffer.from(base64, 'base64'));
+
+  let entries = await readSignatureIndex();
+  entries = entries.filter((e) => e.id !== id);
+  const isFirst = entries.length === 0;
+  const isDefault = Boolean(makeDefault) || isFirst;
+  if (isDefault) entries = entries.map((e) => ({ ...e, isDefault: false }));
+  const entry = { id, label: label || 'Signature', kind: kind || 'signature', isDefault };
+  entries.push(entry);
+  await writeSignatureIndex(entries);
+  return { ...entry, dataUrl };
+});
+
+ipcMain.handle(IPC.DELETE_SIGNATURE, async (_event, id) => {
+  const dir = signaturesDir();
+  try {
+    await fs.promises.unlink(path.join(dir, `${id}.png`));
+  } catch {
+    // ignore missing file
+  }
+  let entries = await readSignatureIndex();
+  const wasDefault = entries.find((e) => e.id === id)?.isDefault;
+  entries = entries.filter((e) => e.id !== id);
+  if (wasDefault && entries.length > 0) entries[0].isDefault = true;
+  await writeSignatureIndex(entries);
+  return { ok: true };
 });
 
 ipcMain.on(IPC.OPEN_FILE_DIALOG, () => openFileDialog());

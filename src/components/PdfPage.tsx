@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { TextLayer } from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -104,17 +104,16 @@ function restoreSelection(root: HTMLDivElement, startOffset: number, endOffset: 
   }
 }
 
-/** @deprecated Import ZOOM.BASE_SCALE from constants/layout instead. */
-export const BASE_SCALE = ZOOM.BASE_SCALE;
-
 interface PdfPageProps {
   pdfDoc: PDFDocumentProxy;
   pageNum: number;
   zoom: number;
   onVisible?: (pageNum: number) => void;
+  /** Annotation overlay, rendered inside the scaled page container. */
+  overlay?: ReactNode;
 }
 
-export const PdfPage = memo(function PdfPage({ pdfDoc, pageNum, zoom, onVisible }: PdfPageProps) {
+export const PdfPage = memo(function PdfPage({ pdfDoc, pageNum, zoom, onVisible, overlay }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const pageContainerRef = useRef<HTMLDivElement>(null);
@@ -285,6 +284,7 @@ export const PdfPage = memo(function PdfPage({ pdfDoc, pageNum, zoom, onVisible 
       >
         <canvas ref={canvasRef} className="absolute top-0 left-0" />
         <div ref={textLayerRef} className="textLayer" />
+        {overlay}
       </div>
     </div>
   );

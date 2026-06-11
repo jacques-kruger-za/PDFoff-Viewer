@@ -19,5 +19,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   consumePendingPdfFiles: () => ipcRenderer.invoke(IPC.CONSUME_PENDING),
   showInFolder: (filePath) => ipcRenderer.invoke(IPC.SHOW_IN_FOLDER, filePath),
+  saveFile: (filePath, data) => ipcRenderer.invoke(IPC.SAVE_FILE, { path: filePath, data }),
+  saveFileAs: (data, defaultName) => ipcRenderer.invoke(IPC.SAVE_FILE_AS, { data, defaultName }),
+  getSignatures: () => ipcRenderer.invoke(IPC.GET_SIGNATURES),
+  saveSignature: (entry) => ipcRenderer.invoke(IPC.SAVE_SIGNATURE, entry),
+  deleteSignature: (id) => ipcRenderer.invoke(IPC.DELETE_SIGNATURE, id),
   isElectron: true,
 });

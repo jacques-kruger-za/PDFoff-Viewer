@@ -5,10 +5,21 @@ import { PdfViewer } from './components/PdfViewer';
 import { ThumbnailSidebar } from './components/ThumbnailSidebar';
 import { EmptyState } from './components/EmptyState';
 import { DocumentLoadingState } from './components/DocumentLoadingState';
+import { SignatureModal } from './components/SignatureModal';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import type { PdfFile } from './types/pdf';
+import type { Annotation, ToolType, SignatureEntry } from './types/annotations';
+import { ANNOTATION_DEFAULTS } from './types/annotations';
+import { exportPdf } from './services/pdfExport';
 import { MENU_COMMANDS } from './constants/ipc';
 import { ZOOM, LAYOUT } from './constants/layout';
+
+interface SaveResult {
+  ok: boolean;
+  path?: string;
+  canceled?: boolean;
+  error?: string;
+}
 
 declare global {
   interface Window {
@@ -21,9 +32,54 @@ declare global {
       showInFolder: (filePath: string) => Promise<void>;
       openFileDialog: () => void;
       openDroppedFiles: (files: File[]) => void;
+      saveFile: (path: string, data: Uint8Array) => Promise<SaveResult>;
+      saveFileAs: (data: Uint8Array, defaultName: string) => Promise<SaveResult>;
+      getSignatures: () => Promise<SignatureEntry[]>;
+      saveSignature: (entry: {
+        id: string;
+        label: string;
+        kind: 'signature' | 'initial';
+        dataUrl: string;
+        makeDefault?: boolean;
+      }) => Promise<SignatureEntry>;
+      deleteSignature: (id: string) => Promise<{ ok: boolean }>;
       isElectron: boolean;
     };
   }
+}
+
+interface PendingImage {
+  dataUrl: string;
+  kind: 'image' | 'signature';
+  aspect: number;
+}
+
+function loadAspect(dataUrl: string): Promise<number> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img.naturalWidth / img.naturalHeight || 1);
+    img.onerror = () => resolve(1);
+    img.src = dataUrl;
+  });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function downloadBytes(bytes: Uint8Array, name: string) {
+  const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 let fileIdCounter = 0;
@@ -36,13 +92,23 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+
+  // Annotation state
+  const [annotationsByFile, setAnnotationsByFile] = useState<Record<string, Annotation[]>>({});
+  const [dirtyFiles, setDirtyFiles] = useState<Record<string, boolean>>({});
+  const [tool, setTool] = useState<ToolType>('select');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [signatureOpen, setSignatureOpen] = useState(false);
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
   const { pdfDoc, totalPages, error } = usePdfDocument(activeFile);
 
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedId(null);
   }, [activeFileId]);
 
   const addFilesFromBuffers = useCallback(
@@ -218,6 +284,137 @@ export default function App() {
     setZoom(Math.round(fitZoom * 1000) / 1000);
   }, [pdfDoc, currentPage]);
 
+  // ── Annotations ─────────────────────────────────────────────────────────────
+  const activeAnnotations = activeFileId ? annotationsByFile[activeFileId] ?? [] : [];
+  const isDirty = activeFileId ? !!dirtyFiles[activeFileId] : false;
+
+  const markDirty = useCallback((fileId: string) => {
+    setDirtyFiles((prev) => ({ ...prev, [fileId]: true }));
+  }, []);
+  const clearDirty = useCallback((fileId: string) => {
+    setDirtyFiles((prev) => ({ ...prev, [fileId]: false }));
+  }, []);
+
+  const handleAddAnnotation = useCallback(
+    (a: Annotation) => {
+      if (!activeFileId) return;
+      setAnnotationsByFile((prev) => ({ ...prev, [activeFileId]: [...(prev[activeFileId] ?? []), a] }));
+      markDirty(activeFileId);
+    },
+    [activeFileId, markDirty]
+  );
+
+  const handleUpdateAnnotation = useCallback(
+    (id: string, patch: Partial<Annotation>) => {
+      if (!activeFileId) return;
+      setAnnotationsByFile((prev) => ({
+        ...prev,
+        [activeFileId]: (prev[activeFileId] ?? []).map((a) => (a.id === id ? ({ ...a, ...patch } as Annotation) : a)),
+      }));
+      markDirty(activeFileId);
+    },
+    [activeFileId, markDirty]
+  );
+
+  const handleDeleteAnnotation = useCallback(
+    (id: string) => {
+      if (!activeFileId) return;
+      setAnnotationsByFile((prev) => ({
+        ...prev,
+        [activeFileId]: (prev[activeFileId] ?? []).filter((a) => a.id !== id),
+      }));
+      markDirty(activeFileId);
+    },
+    [activeFileId, markDirty]
+  );
+
+  const handleConsumePendingImage = useCallback(() => {
+    setPendingImage(null);
+    setTool('select');
+  }, []);
+
+  const handleToolChange = useCallback((t: ToolType) => {
+    setTool(t);
+    setSelectedId(null);
+    if (t !== 'image' && t !== 'signature') setPendingImage(null);
+  }, []);
+
+  const handlePickImage = useCallback(() => {
+    imageInputRef.current?.click();
+  }, []);
+
+  const handleImageChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const dataUrl = await readFileAsDataUrl(file);
+    const aspect = await loadAspect(dataUrl);
+    setPendingImage({ dataUrl, kind: 'image', aspect });
+    setTool('image');
+  }, []);
+
+  const handleSignatureUse = useCallback(async (dataUrl: string) => {
+    const aspect = await loadAspect(dataUrl);
+    setPendingImage({ dataUrl, kind: 'signature', aspect });
+    setTool('signature');
+    setSignatureOpen(false);
+  }, []);
+
+  const handleSave = useCallback(
+    async (saveAs = false) => {
+      if (!activeFile) return;
+      const anns = annotationsByFile[activeFile.id] ?? [];
+      let bytes: Uint8Array;
+      try {
+        bytes = await exportPdf(activeFile.data.slice(0), anns);
+      } catch (err) {
+        console.error('PDF export failed:', err);
+        return;
+      }
+
+      const api = window.electronAPI;
+      if (api?.saveFile && activeFile.path && !saveAs) {
+        const res = await api.saveFile(activeFile.path, bytes);
+        if (res.ok) clearDirty(activeFile.id);
+      } else if (api?.saveFileAs) {
+        const res = await api.saveFileAs(bytes, activeFile.name);
+        if (res.ok) {
+          clearDirty(activeFile.id);
+          if (res.path) {
+            const newPath = res.path;
+            setFiles((prev) => prev.map((f) => (f.id === activeFile.id ? { ...f, path: newPath } : f)));
+          }
+        }
+      } else {
+        downloadBytes(bytes, activeFile.name);
+        clearDirty(activeFile.id);
+      }
+    },
+    [activeFile, annotationsByFile, clearDirty]
+  );
+
+  // Save menu commands (Electron) — wired here so handleSave is defined.
+  useEffect(() => {
+    if (!window.electronAPI) return;
+    return window.electronAPI.onMenuCommand((command) => {
+      if (command === MENU_COMMANDS.SAVE) handleSave(false);
+      else if (command === MENU_COMMANDS.SAVE_AS) handleSave(true);
+    });
+  }, [handleSave]);
+
+  // Browser (non-Electron) Ctrl+S fallback — Electron uses the menu accelerator.
+  useEffect(() => {
+    if (window.electronAPI) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave(e.shiftKey);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleSave]);
+
   return (
     <div
       className="relative h-screen flex flex-col bg-neutral-900"
@@ -233,6 +430,13 @@ export default function App() {
         className="hidden"
         onChange={handleFileChange}
       />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageChange}
+      />
 
       <Toolbar
         currentPage={currentPage}
@@ -243,6 +447,12 @@ export default function App() {
         onOpenFile={handleOpenFile}
         onFitPage={handleFitPage}
         onFitWidth={handleFitWidth}
+        tool={tool}
+        onToolChange={handleToolChange}
+        onPickImage={handlePickImage}
+        onOpenSignature={() => setSignatureOpen(true)}
+        onSave={() => handleSave(false)}
+        isDirty={isDirty}
       />
 
       <TabBar
@@ -276,6 +486,16 @@ export default function App() {
             currentPage={currentPage}
             onCurrentPageChange={setCurrentPage}
             onZoomChange={setZoom}
+            annotations={activeAnnotations}
+            tool={tool}
+            annColor={ANNOTATION_DEFAULTS.PEN_COLOR}
+            selectedId={selectedId}
+            pendingImage={pendingImage}
+            onSelectAnnotation={setSelectedId}
+            onAddAnnotation={handleAddAnnotation}
+            onUpdateAnnotation={handleUpdateAnnotation}
+            onDeleteAnnotation={handleDeleteAnnotation}
+            onConsumePendingImage={handleConsumePendingImage}
           />
         </div>
       ) : activeFile ? (
@@ -290,6 +510,10 @@ export default function App() {
             Drop PDF here
           </div>
         </div>
+      )}
+
+      {signatureOpen && (
+        <SignatureModal onClose={() => setSignatureOpen(false)} onUse={handleSignatureUse} />
       )}
     </div>
   );

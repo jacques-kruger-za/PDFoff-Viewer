@@ -14,59 +14,63 @@ interface CachedDoc {
 }
 
 export function usePdfDocument(file: PdfFile | null) {
-  // Parsed documents cached by file id so switching between already-open tabs
-  // is synchronous — no re-parse, and no momentary totalPages:0 that would
-  // flicker the toolbar's disabled state. Persists for the app session.
-  const cacheRef = useRef<Map<string, CachedDoc>>(new Map());
-  const [, bumpVersion] = useState(0);
+  // Parsed documents cached by file id (in state, so reads happen during render
+  // cleanly) — switching between already-open tabs is synchronous: no re-parse,
+  // and no momentary totalPages:0 that would flicker the toolbar.
+  const [cache, setCache] = useState<Map<string, CachedDoc>>(() => new Map());
   const id = file?.id ?? null;
 
   useEffect(() => {
     const f = file;
-    if (!f || cacheRef.current.has(f.id)) return;
+    if (!f || cache.has(f.id)) return;
 
-    // `stale` only suppresses the re-render bump after we've switched away;
-    // it must NOT destroy the parsed document — that doc is cached for reuse,
-    // and destroying the loading task also destroys its PDFDocumentProxy.
+    // `stale` is informational only; we never destroy a parsed doc here — it's
+    // cached for reuse, and destroying the loading task also destroys its proxy.
     let stale = false;
 
-    // Pass a copy: getDocument may transfer/detach the buffer to the worker,
-    // and we need file.data intact for any later reload.
+    // Pass a copy: getDocument may transfer/detach the buffer to the worker.
     const loadingTask = pdfjsLib.getDocument({ data: f.data.slice(0) });
 
     loadingTask.promise.then(
       (doc) => {
-        if (cacheRef.current.has(f.id)) {
-          // A duplicate load (StrictMode / race) already won — drop this one.
-          doc.destroy();
-        } else {
-          cacheRef.current.set(f.id, { pdfDoc: doc, error: null });
-        }
-        if (!stale) bumpVersion((v) => v + 1);
+        setCache((prev) => {
+          if (prev.has(f.id)) {
+            doc.destroy(); // a duplicate load won the race
+            return prev;
+          }
+          const next = new Map(prev);
+          next.set(f.id, { pdfDoc: doc, error: null });
+          return next;
+        });
       },
       (err: Error) => {
-        if (!cacheRef.current.has(f.id)) {
-          cacheRef.current.set(f.id, { pdfDoc: null, error: err.message });
-        }
-        if (!stale) bumpVersion((v) => v + 1);
+        setCache((prev) => {
+          if (prev.has(f.id)) return prev;
+          const next = new Map(prev);
+          next.set(f.id, { pdfDoc: null, error: err.message });
+          return next;
+        });
       }
     );
 
     return () => {
       stale = true;
+      void stale;
     };
-  }, [file?.id]);
+  }, [file, cache]);
 
   // Destroy every cached document when the app unmounts.
+  const cacheRef = useRef(cache);
   useEffect(() => {
-    const cache = cacheRef.current;
+    cacheRef.current = cache;
+  }, [cache]);
+  useEffect(() => {
     return () => {
-      cache.forEach((entry) => entry.pdfDoc?.destroy());
-      cache.clear();
+      cacheRef.current.forEach((entry) => entry.pdfDoc?.destroy());
     };
   }, []);
 
-  const cached = id ? cacheRef.current.get(id) : undefined;
+  const cached = id ? cache.get(id) : undefined;
   return {
     pdfDoc: cached?.pdfDoc ?? null,
     totalPages: cached?.pdfDoc?.numPages ?? 0,

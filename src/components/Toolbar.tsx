@@ -9,8 +9,16 @@ import {
   Maximize,
   MoveHorizontal,
   RotateCcw,
+  MousePointer2,
+  Type,
+  Pen,
+  Highlighter,
+  Image as ImageIcon,
+  Signature,
+  Save,
 } from 'lucide-react';
 import { ZOOM } from '../constants/layout';
+import type { ToolType } from '../types/annotations';
 
 const ZOOM_STEPS_REVERSED = [...ZOOM.STEPS].reverse();
 
@@ -23,6 +31,13 @@ interface ToolbarProps {
   onOpenFile: () => void;
   onFitPage: () => void;
   onFitWidth: () => void;
+  // Annotation tools
+  tool: ToolType;
+  onToolChange: (tool: ToolType) => void;
+  onPickImage: () => void;
+  onOpenSignature: () => void;
+  onSave: () => void;
+  isDirty: boolean;
 }
 
 function findNextZoom(current: number, direction: 'in' | 'out'): number {
@@ -43,8 +58,16 @@ export function Toolbar({
   onOpenFile,
   onFitPage,
   onFitWidth,
+  tool,
+  onToolChange,
+  onPickImage,
+  onOpenSignature,
+  onSave,
+  isDirty,
 }: ToolbarProps) {
   const disabled = totalPages === 0;
+  const toolBtn = (active: boolean) =>
+    `btn-toolbar ${active ? 'bg-accent/40 text-text-primary' : ''}`;
 
   return (
     <div className="flex items-center gap-1 px-3 py-1.5 bg-surface border-b border-border select-none">
@@ -155,6 +178,35 @@ export function Toolbar({
         title="Reset zoom (100%)"
       >
         <RotateCcw size={18} />
+      </button>
+
+      <div className="w-px h-5 bg-border mx-1" />
+
+      {/* Annotation tools */}
+      <button onClick={() => onToolChange('select')} disabled={disabled} className={toolBtn(tool === 'select')} title="Select / move">
+        <MousePointer2 size={18} />
+      </button>
+      <button onClick={() => onToolChange('text')} disabled={disabled} className={toolBtn(tool === 'text')} title="Add text">
+        <Type size={18} />
+      </button>
+      <button onClick={() => onToolChange('pen')} disabled={disabled} className={toolBtn(tool === 'pen')} title="Draw (pen)">
+        <Pen size={18} />
+      </button>
+      <button onClick={() => onToolChange('highlight')} disabled={disabled} className={toolBtn(tool === 'highlight')} title="Highlight">
+        <Highlighter size={18} />
+      </button>
+      <button onClick={onPickImage} disabled={disabled} className={toolBtn(tool === 'image')} title="Insert image">
+        <ImageIcon size={18} />
+      </button>
+      <button onClick={onOpenSignature} disabled={disabled} className={toolBtn(tool === 'signature')} title="Signature">
+        <Signature size={18} />
+      </button>
+
+      <div className="w-px h-5 bg-border mx-1" />
+
+      <button onClick={onSave} disabled={disabled} className={`btn-toolbar ${isDirty ? 'text-accent' : ''}`} title="Save (Ctrl+S)">
+        <Save size={18} />
+        {isDirty && <span className="ml-0.5 w-1.5 h-1.5 rounded-full bg-accent" />}
       </button>
     </div>
   );

@@ -12,6 +12,8 @@ A lightweight, native PDF viewer built with Electron and React.
 - **Fit controls** — Fit full page, fit width, and reset zoom (100%) toolbar buttons
 - **Page navigation** — First/prev/next/last buttons with direct page number input
 - **Text selection & copy** — Select text across pages with right-click context menu
+- **Annotate & fill** — Add text, freehand pen, and highlights; insert images; fill non-form PDFs. Saved straight into the PDF (Ctrl+S)
+- **Signatures** — Draw or upload a transparent-PNG signature/initial, saved to your user data and reused; click to place, drag and resize
 - **Drag & drop** — Drop PDF files anywhere to open them
 - **File associations** — Double-click `.pdf` files to open in PDFoff Viewer (Windows)
 - **Animated welcome screen** — App icon splash on startup and when all tabs are closed

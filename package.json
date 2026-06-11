@@ -1,7 +1,7 @@
 {
   "name": "pdfoff-viewer",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.3.0",
   "description": "A native PDF viewer built with Electron, React, and PDF.js.",
   "author": "Jacques Kruger",
   "type": "module",
@@ -70,5 +70,8 @@
     "typescript-eslint": "^8.58.0",
     "vite": "^8.0.4",
     "wait-on": "^9.0.4"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
   }
 }

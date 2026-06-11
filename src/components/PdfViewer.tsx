@@ -9,8 +9,16 @@ import {
 } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PdfPage } from './PdfPage';
+import { AnnotationLayer } from './AnnotationLayer';
 import { ZOOM } from '../constants/layout';
 import { TIMING } from '../constants/timing';
+import type { Annotation, ToolType } from '../types/annotations';
+
+interface PendingImage {
+  dataUrl: string;
+  kind: 'image' | 'signature';
+  aspect: number;
+}
 
 interface PdfViewerProps {
   pdfDoc: PDFDocumentProxy;
@@ -19,6 +27,17 @@ interface PdfViewerProps {
   currentPage: number;
   onCurrentPageChange: (page: number) => void;
   onZoomChange: (zoom: number) => void;
+  // Annotation surface
+  annotations: Annotation[];
+  tool: ToolType;
+  annColor: string;
+  selectedId: string | null;
+  pendingImage: PendingImage | null;
+  onSelectAnnotation: (id: string | null) => void;
+  onAddAnnotation: (a: Annotation) => void;
+  onUpdateAnnotation: (id: string, patch: Partial<Annotation>) => void;
+  onDeleteAnnotation: (id: string) => void;
+  onConsumePendingImage: () => void;
 }
 
 export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function PdfViewer({
@@ -28,6 +47,16 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
   currentPage,
   onCurrentPageChange,
   onZoomChange,
+  annotations,
+  tool,
+  annColor,
+  selectedId,
+  pendingImage,
+  onSelectAnnotation,
+  onAddAnnotation,
+  onUpdateAnnotation,
+  onDeleteAnnotation,
+  onConsumePendingImage,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const autoScrollTimeoutRef = useRef<number | null>(null);
@@ -244,6 +273,21 @@ export const PdfViewer = forwardRef<HTMLDivElement, PdfViewerProps>(function Pdf
             pageNum={pageNum}
             zoom={displayedZoom}
             onVisible={handlePageVisible}
+            overlay={
+              <AnnotationLayer
+                page={pageNum}
+                annotations={annotations.filter((a) => a.page === pageNum)}
+                tool={tool}
+                color={annColor}
+                selectedId={selectedId}
+                pendingImage={pendingImage}
+                onSelect={onSelectAnnotation}
+                onAdd={onAddAnnotation}
+                onUpdate={onUpdateAnnotation}
+                onDelete={onDeleteAnnotation}
+                onConsumePendingImage={onConsumePendingImage}
+              />
+            }
           />
         ))}
       </div>

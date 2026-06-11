@@ -37,6 +37,10 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      // sandbox must be off so the preload can require() shared local modules
+      // (./constants.cjs). Sandboxed preloads can only require electron + builtins.
+      // contextIsolation stays on; this app loads only local content.
+      sandbox: false,
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });

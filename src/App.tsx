@@ -39,7 +39,7 @@ export default function App() {
   const viewerRef = useRef<HTMLDivElement>(null);
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
-  const { pdfDoc, totalPages, error } = usePdfDocument(activeFile?.data ?? null);
+  const { pdfDoc, totalPages, error } = usePdfDocument(activeFile);
 
   useEffect(() => {
     setCurrentPage(1);

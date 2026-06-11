@@ -6,6 +6,7 @@ current_focus: v1.2 — DRY refactor extracting IPC names, layout, zoom, and tim
 next_step: Commit the v1.2 constants refactor and finish remaining v1.2 UI polish
 blockers: none
 key_decisions:
+  - 2026-06-11: v1.3 annotation/signature design — bake into PDF via PDF.js saveDocument() + save to original; all PDF.js-native editors (free-text, ink, highlight, image stamp); support both AcroForm filling and free annotations; signature is an image stamp (draw in-app or upload PNG) stored in user data; toolbar-mode UI, no side panel
   - 2026-04-09: Built on Electron + React + PDF.js (pdfjs-dist) — instant open with native filesystem access, unlike the Stirling/Docker server approach
   - 2026-04-10: Main process reads PDF bytes and forwards to renderer — fixes black screen in production builds and enables file associations
   - 2026-04-12: Cap maximum zoom at 500% to prevent render stalling
